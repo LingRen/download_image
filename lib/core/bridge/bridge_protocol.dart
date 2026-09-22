@@ -52,8 +52,12 @@ class CaptureBatch extends BridgeMessage {
     if (rawAssets is List) {
       for (final item in rawAssets) {
         if (item is Map) {
-          final json = item.map((key, value) => MapEntry(key.toString(), value));
-          if (json['url'] is String) assets.add(ImageAsset.fromJson(json));
+          try {
+            final json = item.map((key, value) => MapEntry(key.toString(), value));
+            if (json['url'] is String) assets.add(ImageAsset.fromJson(json));
+          } catch (_) {
+            // 单条脏数据只跳过该张，不能拖垮整批增量推送。
+          }
         }
       }
     }
@@ -82,7 +86,8 @@ class ScanProgress extends BridgeMessage {
   bool get isRunning => state == ScanState.start || state == ScanState.progress;
 
   factory ScanProgress.fromMap(Map<String, Object?> map) {
-    final name = map['state'] as String?;
+    // 不硬转字符串：非字符串的 state 也走「未知 → done」回退，而不是丢弃整条消息。
+    final name = map['state'];
     return ScanProgress(
       state: ScanState.values.firstWhere(
         (value) => value.name == name,
