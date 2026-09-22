@@ -1300,6 +1300,26 @@ void main() {
       expect(scan.state, ScanState.done);
       expect(scan.maxScreens, 40, reason: '缺省上限为 40 屏');
     });
+
+    test('单条 asset 字段类型不对只跳过该张，不丢整批', () {
+      final batch = BridgeMessage.parse(jsonEncode({
+        'type': 'batch',
+        'pageUrl': 'https://a.com/p',
+        'assets': [
+          {'url': 'https://a.com/good.jpg', 'w': 300, 'h': 200},
+          {'url': 'https://a.com/dirty.jpg', 'w': '300'},
+          {'w': 5},
+          'not-a-map',
+        ],
+      }))! as CaptureBatch;
+      expect(batch.assets.length, 1);
+      expect(batch.assets.single.url, 'https://a.com/good.jpg');
+    });
+
+    test('scan 的 state 非字符串时回退为 done 而不丢弃整条', () {
+      final scan = BridgeMessage.parse(jsonEncode({'type': 'scan', 'state': 5}))! as ScanProgress;
+      expect(scan.state, ScanState.done);
+    });
   });
 
   test('kBlobChunkBytes 为 512KB', () {
@@ -1373,8 +1393,12 @@ class CaptureBatch extends BridgeMessage {
     if (rawAssets is List) {
       for (final item in rawAssets) {
         if (item is Map) {
-          final json = item.map((key, value) => MapEntry(key.toString(), value));
-          if (json['url'] is String) assets.add(ImageAsset.fromJson(json));
+          try {
+            final json = item.map((key, value) => MapEntry(key.toString(), value));
+            if (json['url'] is String) assets.add(ImageAsset.fromJson(json));
+          } catch (_) {
+            // 单条脏数据只跳过该张，不能拖垮整批增量推送。
+          }
         }
       }
     }
@@ -1403,7 +1427,8 @@ class ScanProgress extends BridgeMessage {
   bool get isRunning => state == ScanState.start || state == ScanState.progress;
 
   factory ScanProgress.fromMap(Map<String, Object?> map) {
-    final name = map['state'] as String?;
+    // 不硬转字符串：非字符串的 state 也走「未知 → done」回退，而不是丢弃整条消息。
+    final name = map['state'];
     return ScanProgress(
       state: ScanState.values.firstWhere(
         (value) => value.name == name,
