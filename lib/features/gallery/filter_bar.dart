@@ -28,6 +28,17 @@ class FilterBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Row(
               children: [
+                Row(
+                  children: [
+                    Text('尺寸去重', style: Theme.of(context).textTheme.bodySmall),
+                    Switch(
+                      key: const Key('dedupe-switch'),
+                      value: filter.mergeVariants,
+                      onChanged: capture.setMergeVariants,
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 8),
                 SizedBox(
                   width: 180,
                   child: Row(
@@ -69,17 +80,6 @@ class FilterBar extends StatelessWidget {
                       onSelected: (_) => capture.toggleSource(entry.key),
                     ),
                   ),
-                const SizedBox(width: 8),
-                Row(
-                  children: [
-                    Text('尺寸去重', style: Theme.of(context).textTheme.bodySmall),
-                    Switch(
-                      key: const Key('dedupe-switch'),
-                      value: filter.mergeVariants,
-                      onChanged: capture.setMergeVariants,
-                    ),
-                  ],
-                ),
               ],
             ),
           ),

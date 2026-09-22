@@ -66,6 +66,8 @@ class _ImageTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final format = formatOf(asset);
     final badge = asset.sizeKnown ? '${asset.width}×${asset.height}' : '尺寸未知';
+    // 缩略图按显示尺寸解码，避免几百张大图按原分辨率撑爆 ImageCache。
+    final cacheSize = (kTileMaxExtent * MediaQuery.devicePixelRatioOf(context)).round();
     return InkWell(
       key: Key('tile-${asset.url}'),
       onTap: onTap,
@@ -83,6 +85,8 @@ class _ImageTile extends StatelessWidget {
             child: Image.network(
               asset.url,
               fit: BoxFit.cover,
+              cacheWidth: cacheSize,
+              cacheHeight: cacheSize,
               headers: pageUrl == null ? null : {'Referer': pageUrl!, 'Accept': 'image/*,*/*;q=0.8'},
               errorBuilder: (context, error, stack) => const Center(
                 child: Icon(Icons.broken_image_outlined, key: Key('tile-thumb-error')),
@@ -103,12 +107,16 @@ class _ImageTile extends StatelessWidget {
           Positioned(
             right: 2,
             top: 2,
-            child: InkWell(
+            child: IconButton(
               key: Key('tile-preview-${asset.url}'),
-              onTap: onPreview,
-              child: Icon(
+              onPressed: onPreview,
+              iconSize: 16,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              // 默认 padded 命中区会被撑到 48×48，盖住 tile 中心并抢走点选手势。
+              style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              icon: Icon(
                 Icons.zoom_in,
-                size: 16,
                 color: Colors.white.withValues(alpha: 0.9),
               ),
             ),

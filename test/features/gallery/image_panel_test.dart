@@ -1,6 +1,7 @@
 import 'package:download_image/core/bridge/bridge_protocol.dart';
 import 'package:download_image/core/model/image_asset.dart';
 import 'package:download_image/features/capture/capture_controller.dart';
+import 'package:download_image/features/download/download_controller.dart';
 import 'package:download_image/features/gallery/image_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,7 +17,13 @@ void main() {
     return controller;
   }
 
-  Widget wrap(CaptureController capture, {double width = 420}) {
+  Widget wrap(
+    CaptureController capture, {
+    double width = 420,
+    DownloadController? download,
+    void Function(ImageAsset asset)? onOpenPreview,
+    VoidCallback? onPermissionDenied,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: SizedBox(
@@ -24,8 +31,9 @@ void main() {
           height: 700,
           child: ImagePanel(
             capture: capture,
-            download: fakeDownloadController(),
-            onOpenPreview: (_) {},
+            download: download ?? fakeDownloadController(),
+            onOpenPreview: onOpenPreview ?? (_) {},
+            onPermissionDenied: onPermissionDenied,
           ),
         ),
       ),
@@ -78,8 +86,10 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('tile-https://a.com/small.jpg')), findsOneWidget);
 
-    capture.setMinSide(200);
+    // 点击滑块中点（≈ max/2，分度后为 256px），验证 Slider.onChanged 接线。
+    await tester.tapAt(tester.getCenter(find.byKey(const Key('min-side-slider'))));
     await tester.pump();
+    expect(capture.filter.minSide, greaterThan(80));
     expect(find.byKey(const Key('tile-https://a.com/small.jpg')), findsNothing);
     expect(find.byKey(const Key('tile-https://a.com/big.jpg')), findsOneWidget);
   });
@@ -139,5 +149,90 @@ void main() {
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
     expect(find.byKey(const Key('tile-badge-unknown-https://a.com/unknown.jpg')), findsOneWidget);
+  });
+
+  testWidgets('未选中时下载按钮禁用，选中后按可见顺序下载', (tester) async {
+    final executor = FakeDownloadExecutor();
+    final capture = controllerWith(const [
+      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+      ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
+    ]);
+    await tester.pumpWidget(wrap(capture, download: fakeDownloadController(executor: executor)));
+    await tester.pump();
+
+    FilledButton downloadButton() =>
+        tester.widget<FilledButton>(find.byKey(const Key('download-selected')));
+    expect(downloadButton().onPressed, isNull, reason: '未选中时不可下载');
+
+    // 反序点选：下载顺序应仍是可见列表顺序，而不是点选顺序。
+    await tester.tap(find.byKey(const Key('tile-https://a.com/b.png')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('tile-https://a.com/a.jpg')));
+    await tester.pump();
+    expect(find.text('已选 2 张'), findsOneWidget);
+    expect(downloadButton().onPressed, isNotNull);
+
+    await tester.tap(find.byKey(const Key('download-selected')));
+    await tester.pumpAndSettle();
+    expect(executor.calls, ['https://a.com/a.jpg', 'https://a.com/b.png']);
+  });
+
+  testWidgets('清空选择后选中集为空、下载按钮回到禁用', (tester) async {
+    final capture = controllerWith(const [
+      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+    ]);
+    await tester.pumpWidget(wrap(capture));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('select-all')));
+    await tester.pump();
+    expect(capture.selectedUrls, {'https://a.com/a.jpg'});
+
+    await tester.tap(find.byKey(const Key('select-none')));
+    await tester.pump();
+    expect(capture.selectedUrls, isEmpty);
+    expect(find.text('已选 0 张'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byKey(const Key('download-selected'))).onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('下载遇权限被拒时回调一次', (tester) async {
+    final executor = FakeDownloadExecutor(permissionUrls: {'https://a.com/a.jpg'});
+    var denied = 0;
+    final capture = controllerWith(const [
+      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+    ]);
+    await tester.pumpWidget(wrap(
+      capture,
+      download: fakeDownloadController(executor: executor),
+      onPermissionDenied: () => denied++,
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('select-all')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('download-selected')));
+    await tester.pumpAndSettle();
+    expect(denied, 1);
+  });
+
+  testWidgets('点预览按钮触发回调且不顺带选中图片', (tester) async {
+    ImageAsset? opened;
+    final capture = controllerWith(const [
+      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+    ]);
+    await tester.pumpWidget(wrap(capture, onOpenPreview: (asset) => opened = asset));
+    await tester.pump();
+
+    final preview = find.byKey(const Key('tile-preview-https://a.com/a.jpg'));
+    expect(tester.getSize(preview), const Size(32, 32));
+
+    // 偏离中心点击：仍在 32×32 命中区内，但落在 16×16 图标之外。
+    await tester.tapAt(tester.getCenter(preview) + const Offset(12, 0));
+    await tester.pump();
+    expect(opened?.url, 'https://a.com/a.jpg');
+    expect(capture.selectedUrls, isEmpty);
   });
 }

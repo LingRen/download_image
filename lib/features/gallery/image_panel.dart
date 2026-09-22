@@ -29,6 +29,10 @@ class ImagePanel extends StatelessWidget {
       listenable: Listenable.merge([capture, download]),
       builder: (context, _) {
         final assets = capture.visibleAssets;
+        final selected = [
+          for (final asset in assets)
+            if (capture.selectedUrls.contains(asset.url)) asset,
+        ];
         return Column(
           key: const Key('image-panel'),
           children: [
@@ -45,7 +49,12 @@ class ImagePanel extends StatelessWidget {
                     ),
             ),
             const Divider(height: 1),
-            _ActionBar(capture: capture, download: download, onPermissionDenied: onPermissionDenied),
+            _ActionBar(
+              capture: capture,
+              download: download,
+              selected: selected,
+              onPermissionDenied: onPermissionDenied,
+            ),
           ],
         );
       },
@@ -71,15 +80,22 @@ class _EmptyHint extends StatelessWidget {
 }
 
 class _ActionBar extends StatelessWidget {
-  const _ActionBar({required this.capture, required this.download, this.onPermissionDenied});
+  const _ActionBar({
+    required this.capture,
+    required this.download,
+    required this.selected,
+    this.onPermissionDenied,
+  });
 
   final CaptureController capture;
   final DownloadController download;
+
+  /// 面板已算好的选中集（可见顺序），避免在此重复全量计算。
+  final List<ImageAsset> selected;
   final VoidCallback? onPermissionDenied;
 
   @override
   Widget build(BuildContext context) {
-    final selected = capture.selectedAssets;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
