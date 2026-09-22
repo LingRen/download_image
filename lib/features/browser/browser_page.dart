@@ -45,8 +45,8 @@ class BrowserPage extends StatefulWidget {
   final CaptureController capture;
   final JsChannelHolder jsChannel;
 
-  /// 检测到主框架跳到了新页面且列表非空时调用，返回用户选择（第一个参数是
-  /// 切换前的主框架 URL，第二个是新页 URL）。
+  /// 检测到主框架跳到了新页面且上一个页面抓到过图时调用，返回用户选择
+  /// （第一个参数是切换前的主框架 URL，第二个是新页 URL）。
   final Future<PageSwitchDecision> Function(String previousUrl, String newUrl)?
       onPageSwitchNeeded;
 
@@ -128,14 +128,15 @@ class _BrowserPageState extends State<BrowserPage> {
         keepAssets = await widget.onPageSwitchNeeded?.call(previousUrl, url) !=
             PageSwitchDecision.clear;
       }
-      if (keepAssets) {
-        capture.keepAssetsForNewPage(url);
-      } else {
+      if (!keepAssets) {
         // 只删上一个页面的资产，别把新页已经推过来的图也清掉（见 Task 11 ⚠️ 段）。
         capture.removeUrls(previousUrls);
         // 归属记录要同步清掉，否则这些 URL 之后被新页重新抓到时会沿用旧页归属。
         _pageOfUrl.removeWhere((_, pageUrl) => pageUrl == previousUrl);
       }
+      // 清空与保留都要复位扫描态：removeUrls 不碰 _scan，若旧页扫描仍在 running，
+      // 新页的 _startScan 会因 isScanning 早退——状态条永久转圈且「重新扫描整页」失效。
+      capture.keepAssetsForNewPage(url);
     }
     if (_autoScannedForCurrentUrl) return;
     _autoScannedForCurrentUrl = true;
