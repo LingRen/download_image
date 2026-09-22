@@ -3120,6 +3120,12 @@ void main() {
       expect(buildFileName('https://a.com/p/i.jpg?w=300'), 'i.jpg');
     });
 
+    test('pathSegments 已解码，不能再解码一次', () {
+      // 含 % 与非 ASCII 的文件名若被二次解码会抛 ArgumentError。
+      expect(buildFileName('https://a.com/100%25.jpg'), '100_.jpg');
+      expect(buildFileName('https://a.com/%E4%B8%AD%E6%96%87.jpg'), '__.jpg');
+    });
+
     test('路径没有文件名时回退为 image，用 mime 补扩展名', () {
       expect(buildFileName('https://a.com/'), 'image');
       expect(buildFileName('https://a.com/p', mimeType: 'image/png'), 'p.png');
@@ -3177,11 +3183,12 @@ const Map<String, String> _mimeExtensions = {
 };
 
 /// 从 URL 推导保存用的文件名：不信任 URL，路径段与危险字符都会被清洗。
+/// 百分号转义由 `Uri.pathSegments` 负责，这里不再解码，避免二次解码崩溃。
 String buildFileName(String url, {String? mimeType}) {
   final uri = Uri.tryParse(url);
   var name = '';
   if (uri != null && uri.pathSegments.isNotEmpty) {
-    name = Uri.decodeComponent(uri.pathSegments.last);
+    name = uri.pathSegments.last;
   }
   name = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   name = name.replaceAll(RegExp(r'^\.+'), '');
@@ -3329,17 +3336,24 @@ class DownloadsSaveTarget implements SaveTarget {
 
   @override
   Future<String> save({required File tempFile, required String fileName, String? mimeType}) async {
-    final dir = await _downloadsDirectory();
-    if (dir == null) {
-      throw SaveException('无法定位系统下载目录');
+    try {
+      final dir = await _downloadsDirectory();
+      if (dir == null) {
+        throw SaveException('无法定位系统下载目录');
+      }
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final resolved = resolveFileName(fileName, (candidate) => File('${dir.path}/$candidate').existsSync());
+      final target = File('${dir.path}/$resolved');
+      await tempFile.copy(target.path);
+      return target.path;
+    } on SaveException {
+      // 已是对外承诺的失败类型，原样透传，不再套一层前缀。
+      rethrow;
+    } catch (e) {
+      throw SaveException('保存到下载目录失败：$e');
     }
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    final resolved = resolveFileName(fileName, (candidate) => File('${dir.path}/$candidate').existsSync());
-    final target = File('${dir.path}/$resolved');
-    await tempFile.copy(target.path);
-    return target.path;
   }
 
   @override
