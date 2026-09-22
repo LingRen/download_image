@@ -5224,7 +5224,7 @@ git add lib/app lib/main.dart test/app lib/features/browser/browser_page.dart \
 git commit -m "feat(app): 应用壳、900dp 响应式布局、WebView2 缺失引导"
 ```
 
-**补记（Task 17 实施结果）**：已完成，提交号 `78f3def`（实现与用例）+ 本次审查修复提交。全量 **123 条**用例全绿（基线 110 + 实现阶段 10 + 审查修复 3），`flutter analyze` 输出 `No issues found!`。计划 Step 1-10 与上游交办的补充项 A/B/C/D 全部落地，`lib/features/browser/platform/webview2_check.dart` 用计划原文（6.1.5 中 `WebViewEnvironment.getAvailableVersion()` 确为静态方法，无需改实例调用）。
+**补记（Task 17 实施结果）**：已完成，提交号 `78f3def`（实现与用例）+ `bb6d59c`（审查修复：按页归属清空、面板头部折叠按钮、FAB 进度文案刷新）。全量 **123 条**用例全绿（基线 110 + 实现阶段 10 + 审查修复 3），`flutter analyze` 输出 `No issues found!`。计划 Step 1-10 与上游交办的补充项 A/B/C/D 全部落地，`lib/features/browser/platform/webview2_check.dart` 用计划原文（6.1.5 中 `WebViewEnvironment.getAvailableVersion()` 确为静态方法，无需改实例调用）。
 
 新增用例（10 条）：计划 Step 1 的 5 条（断点常量、≥900dp 分栏、<900dp BottomSheet、折叠按钮、已捕获计数）+ 追加 5 条（`page-loading` 进度条消费 `isLoading/progress`、跨越 900dp 不重建浏览器子树、窄屏面板下载失败 SnackBar、宽屏预览页「下载这张」失败 SnackBar、`test/features/capture/capture_controller_test.dart` 的 `removeUrls`）。第 4 条（宽屏预览页失败 SnackBar）**未放弃**，在 widget 测试里稳定通过（`Image.network` 走 `errorBuilder`，`ScaffoldMessenger` 取根 messenger，失败提示可被 `find.textContaining` 命中）。审查修复阶段再补 3 条：`test/features/browser/browser_page_test.dart`（新建）的 `urlsOfPage` 两条纯单测 + `image_panel_test.dart` 的 `onCollapse` 开关用例。
 
