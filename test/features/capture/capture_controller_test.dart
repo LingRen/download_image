@@ -227,4 +227,58 @@ void main() {
     expect(controller.selectedAssets, isEmpty);
     expect(controller.selectedUrls.length, 1, reason: '选中态不因筛选变化被隐式清除');
   });
+
+  test('isScanning 跟随 scan 状态起止', () {
+    final controller = CaptureController();
+    expect(controller.isScanning, isFalse, reason: '未开始扫描时不显示进度条');
+
+    controller.accept(
+      BridgeMessage.parse(jsonEncode({'type': 'scan', 'state': 'start'}))!,
+    );
+    expect(controller.isScanning, isTrue);
+
+    controller.accept(
+      BridgeMessage.parse(
+        jsonEncode({'type': 'scan', 'state': 'progress', 'screen': 3}),
+      )!,
+    );
+    expect(controller.isScanning, isTrue);
+
+    controller.accept(
+      BridgeMessage.parse(jsonEncode({'type': 'scan', 'state': 'aborted'}))!,
+    );
+    expect(controller.isScanning, isFalse);
+  });
+
+  test('切换页面保留列表时只复位扫描状态', () {
+    final controller = CaptureController();
+    controller.accept(
+      BridgeMessage.parse(
+        _batch([
+          {'url': 'https://a.com/a.jpg', 'w': 100, 'h': 100, 'source': 'img'},
+        ]),
+      )!,
+    );
+    controller.toggleSelection('https://a.com/a.jpg');
+    controller.accept(
+      BridgeMessage.parse(
+        jsonEncode({
+          'type': 'scan',
+          'state': 'limit',
+          'screen': 40,
+          'maxScreens': 40,
+          'found': 1,
+        }),
+      )!,
+    );
+
+    controller.keepAssetsForNewPage('https://b.com/p');
+
+    expect(controller.pageUrl, 'https://b.com/p');
+    expect(controller.rawAssets.length, 1, reason: '保留已抓列表');
+    expect(controller.selectedUrls, {'https://a.com/a.jpg'}, reason: '选中态一并保留');
+    expect(controller.scan, isNull);
+    expect(controller.isScanning, isFalse);
+    expect(controller.scanReachedLimit, isFalse, reason: '新页面不能沿用上一页的上限提示');
+  });
 }
