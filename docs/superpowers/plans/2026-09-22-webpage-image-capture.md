@@ -4633,6 +4633,12 @@ git add lib/features/gallery/image_preview_page.dart
 git commit -m "feat(gallery): 大图预览与复制直链"
 ```
 
+**补记（Task 16 实施结果）**：已完成，提交 `caba7f4`（实现 + 测试）、`e955dd3`（补加载失败路径用例）。全量 110 条用例全绿，`analyze` 无问题；规格审查与代码质量审查均通过。计划本步未要求写测试，按项目 TDD 惯例补了 5 条（标题尺寸/格式、尺寸未知、复制直链写入剪贴板并提示、下载回调、加载失败提示）；页内代码与计划逐字一致，唯一偏离是 `git add` 显式加了测试文件路径。
+
+- **交办 Task 17（必须落实）**：`onDownload` 契约（`Future<void> Function(ImageAsset)`）**表达不了失败**——`DownloadController.downloadAll` 内部 catch 掉所有异常、只写 `_status`/`_errors`，**从不抛出**。所以「下载这张」在**非权限类失败**（镜像 403、写盘失败等）下用户完全没有反馈。Task 17 的 wrapper 除了 `needsPermission` 弹权限引导外，还应在 await 之后读 `download.errorOf(asset.url)` 并给出提示（面板侧同一缺口，一并处理）。
+- 另需 Task 17 决定：预览页按钮不受 `download.isBusy` 约束，连点第二次会被 `downloadAll` 的 `_busy` 早退，wrapper 可能读到**上一批**的 `needsPermission` 而重复弹权限引导。
+- 已知取舍（本期不改）：预览页按**原分辨率**解码（保证放大清晰），极端大图（如 12000×8000）单张解码可达数百 MB，移动端有 OOM 风险；`Referer`/`Accept` headers 与尺寸角标文案在预览页与网格各写一份，抽取为非必须。
+
 ---
 
 ## Task 17: 应用壳、900dp 断点与四端启动检查
