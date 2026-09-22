@@ -28,7 +28,9 @@ import 'package:integration_test/integration_test.dart';
 /// DOM 全扫相互排他——任何 mutation 都只是触发一次重扫，最终仍由 DOM 采集，
 /// 因此这里不硬造排他断言，只通过「插入新图后多推一批」间接覆盖。
 const String _fixtureHtml = '''
-<!DOCTYPE html><html><head><style>
+<!DOCTYPE html><html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
   .bg1 { width: 200px; height: 200px; background-image: url('/img/bg-1.png'); }
   .bg2 { width: 200px; height: 200px; background-image: url('/img/bg-2.jpg'); }
 </style></head><body>
@@ -39,9 +41,15 @@ const String _fixtureHtml = '''
   <div class="bg1"></div>
   <div class="bg2"></div>
   <div id="lazy"></div>
-  <div style="height: 4000px"></div>
+  <div id="spacer" style="height: 4000px"></div>
   <div id="late"></div>
   <script>
+    // 占位高度按视口算，而不是写死 4000px：iOS 上没有 viewport meta 时布局视口
+    // 高达约 2130 CSS px，2 屏就能越过写死的高度、被误判成「已到底」，
+    // 于是「上限用例」在 iOS 上会走 done 而不是 limit。6 倍视口高保证了
+    // 「2 屏到不了底、40 屏必定到底」这个不变量在任何视口尺寸下都成立。
+    document.getElementById('spacer').style.height =
+      Math.max(window.innerHeight * 6, 4000) + 'px';
     // 动态插入一张（懒加载形态之一）：全量扫描与 MutationObserver 都要能覆盖到。
     // 另一张懒加载图由测试在扫描结束后插入，用来观测「发现新图 → 增量再推一批」。
     setTimeout(function () {
@@ -319,7 +327,7 @@ void main() {
     expect(harness.progresses, isNotEmpty);
     expect(harness.progresses.first.state, ScanState.start);
     expect(harness.progresses.last.state, ScanState.done,
-        reason: '本 fixture 4000px 高，40 屏足够到底，必须走 done 而不是 limit');
+        reason: '占位高 6 倍视口，40 屏足够到底，必须走 done 而不是 limit');
     expect(harness.progresses.last.isRunning, isFalse);
     expect(
         harness.progresses
