@@ -6,13 +6,17 @@ final RegExp _dimensionSuffix = RegExp(r'[_-]\d+x\d+(?=\.|$)');
 
 /// 尺寸变体归组用的 key：去掉尺寸类查询参数与 `_300x300` / `-300x300` 路径后缀。
 /// 保留其它查询参数，避免把不同资源误判为同一张图。
+/// query 按**原始片段**逐一过滤后原样拼回（不先解码再拼接），因此 `%26`、同名参数等
+/// 不同 URL 不会碰撞成同一 key 而被误合并；解析失败或无 scheme 时原样返回；
+/// fragment 不参与归组。返回值仅作内部归组键，不保证是合法 URL。
 String variantKey(String url) {
   final uri = Uri.tryParse(url);
   if (uri == null || !uri.hasScheme) return url;
   final path = uri.path.replaceAll(_dimensionSuffix, '');
-  final query = uri.queryParameters.entries
-      .where((entry) => !_dimensionParams.contains(entry.key.toLowerCase()))
-      .map((entry) => '${entry.key}=${entry.value}')
+  final query = uri.query
+      .split('&')
+      .where((segment) => segment.isNotEmpty)
+      .where((segment) => !_dimensionParams.contains(segment.split('=').first.toLowerCase()))
       .join('&');
   final buffer = StringBuffer()
     ..write(uri.scheme)

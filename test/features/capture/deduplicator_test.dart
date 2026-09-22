@@ -15,6 +15,16 @@ void main() {
       expect(variantKey('https://a.com/i.jpg?w=300&token=abc'), 'https://a.com/i.jpg?token=abc');
     });
 
+    test('编码参数与同名参数不同的 URL 不被误合并', () {
+      expect(variantKey('https://a.com/i.jpg?a=b&c=d'), isNot(variantKey('https://a.com/i.jpg?a=b%26c%3Dd')));
+      expect(variantKey('https://a.com/i.jpg?token=a&token=b'), isNot(variantKey('https://a.com/i.jpg?token=b')));
+    });
+
+    test('无 scheme 时原样返回，不做任何剥离', () {
+      expect(variantKey('//a.com/i.jpg?w=300'), '//a.com/i.jpg?w=300');
+      expect(variantKey('relative/path.jpg'), 'relative/path.jpg');
+    });
+
     test('去掉 _300x300 / -300x300 路径后缀', () {
       expect(variantKey('https://a.com/pic_300x300.jpg'), 'https://a.com/pic.jpg');
       expect(variantKey('https://a.com/pic-600x600.jpg'), 'https://a.com/pic.jpg');
