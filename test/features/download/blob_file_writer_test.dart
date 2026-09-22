@@ -55,6 +55,23 @@ void main() {
     await writer.close();
   });
 
+  test('未打开或已关闭时 add 抛可辨认的 StateError', () async {
+    final file = File('${tempDir.path}/lifecycle.bin');
+    final writer = BlobFileWriter(file);
+    expect(
+      () => writer.add(chunk('dl-1', 0, const [1])),
+      throwsA(isA<StateError>()),
+      reason: 'open 之前不接受分块',
+    );
+    await writer.open();
+    await writer.close();
+    expect(
+      () => writer.add(chunk('dl-1', 0, const [1])),
+      throwsA(isA<StateError>()),
+      reason: 'close 之后不接受分块',
+    );
+  });
+
   test('超过 512KB 的大文件分块写入后大小正确', () async {
     final file = File('${tempDir.path}/big.bin');
     final writer = BlobFileWriter(file);

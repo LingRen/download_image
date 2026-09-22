@@ -26,11 +26,17 @@ class BlobFileWriter {
   }
 
   Future<void> add(BlobChunk chunk) async {
+    // 显式生命周期检查：否则 _raf! 会抛 `Null check operator used on a null value`，
+    // 调用方（Task 14 的接收器）拿到的是一个认不出来的 TypeError。
+    final raf = _raf;
+    if (raf == null) {
+      throw StateError('writer 未打开或已关闭，不能接收分块（seq=${chunk.seq}）');
+    }
     if (chunk.seq != _expectedSeq) {
       throw StateError('分块乱序：期望 $_expectedSeq，收到 ${chunk.seq}');
     }
     final bytes = base64Decode(chunk.data);
-    await _raf!.writeFrom(bytes);
+    await raf.writeFrom(bytes);
     _receivedBytes += bytes.length;
     _expectedSeq++;
     if (chunk.last) _complete = true;
