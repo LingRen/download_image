@@ -246,6 +246,13 @@ class _BrowserPageState extends State<BrowserPage> {
         // 取消类错误不是真失败：重定向/被取代的主框架请求常常报这个，
         // 若当成失败弹错误页，会把错误页永久盖在正常加载好的页面上。
         if (error.type == WebResourceErrorType.CANCELLED) return;
+        // 主框架失败也必须复位扫描态，否则「扫描中失败 → 点重试加载同一 URL」时
+        // isNewPage 为 false、_autoScannedForCurrentUrl 仍为 true、capture.scan
+        // 仍停在 progress：状态条永久转圈且「重新扫描整页」永久失效。
+        // 用 _lastMainFrameUrl（最后一次真正加载完成的主框架 URL）而不是失败的目标 URL：
+        // 列表里的资产来自那个页面，降级下载拼 Referer 时才对得上。
+        _autoScannedForCurrentUrl = false;
+        widget.capture.keepAssetsForNewPage(_lastMainFrameUrl ?? widget.initialUrl.toString());
         widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
       },
       onReceivedHttpError: (controller, request, response) {
