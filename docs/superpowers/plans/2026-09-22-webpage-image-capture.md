@@ -1541,13 +1541,21 @@ const String kCaptureScript = r'''
 
   function markReady() {
     if (ready || !bridgeAvailable()) return;
+    while (outbox.length) {
+      try {
+        window.flutter_inappwebview.callHandler(HANDLER, JSON.stringify(outbox[0]));
+      } catch (e) { return; } // 发送失败就把队首留在队列里，下个 tick 再试
+      outbox.shift();
+    }
     ready = true;
-    while (outbox.length) post(outbox.shift());
   }
 
   window.addEventListener('flutterInAppWebViewPlatformReady', markReady);
+  // 轮询必须持续到 ready 为真：仅凭「桥对象存在」就停表，会在
+  // 「对象存在但 callHandler 尚不可用、且就绪事件被错过」时让 outbox 永久卡死。
   var readyTimer = setInterval(function () {
-    if (bridgeAvailable()) { markReady(); clearInterval(readyTimer); }
+    if (ready) { clearInterval(readyTimer); return; }
+    markReady();
   }, 100);
   setTimeout(function () { clearInterval(readyTimer); }, 10000);
 
@@ -1580,10 +1588,13 @@ const String kCaptureScript = r'''
     if (!url) return;
     var entry = seen[url];
     if (entry) {
-      if (SOURCE_RANK[source] > SOURCE_RANK[entry.source]) entry.source = source;
-      if (w != null && h != null && (entry.w == null || entry.w < w)) { entry.w = w; entry.h = h; }
-      if (size != null) entry.size = size;
-      if (mime != null) entry.mime = mime;
+      // 只有信息真的变了才重新入 pending；否则每轮扫描都会把全量快照重推一遍桥。
+      var changed = false;
+      if (SOURCE_RANK[source] > SOURCE_RANK[entry.source]) { entry.source = source; changed = true; }
+      if (w != null && h != null && (entry.w == null || entry.w < w)) { entry.w = w; entry.h = h; changed = true; }
+      if (size != null && entry.size == null) { entry.size = size; changed = true; }
+      if (mime != null && entry.mime == null) { entry.mime = mime; changed = true; }
+      if (!changed) return;
     } else {
       seen[url] = { url: url, source: source, w: w, h: h, size: size, mime: mime };
     }
@@ -1634,7 +1645,8 @@ const String kCaptureScript = r'''
         else if (d.charAt(d.length - 1) === 'x') w = Math.round(parseFloat(body) * 1000);
       }
       if (isNaN(w)) w = -1;
-      if (w >= bestW) {
+      // 并列时取先出现的，与 lib/features/capture/srcset.dart 的 pickLargest 保持一致。
+      if (best === null || w > bestW) {
         bestW = w;
         best = { url: fields[0], width: w < 0 ? null : w };
       }
