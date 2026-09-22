@@ -2634,7 +2634,54 @@ class _BrowserPageState extends State<BrowserPage> {
 }
 ```
 
-- [ ] **Step 4: 给桥回调补上扫描上限提示**
+- [ ] **Step 4: 临时接线 `lib/main.dart`（否则仓库编译不过）**
+
+新 `BrowserPage` 多了 3 个必填参数，而 `main.dart` 要到 Task 17 才定稿替换。本步只做最小接线，让它能编译运行，不要在这里加任何功能：
+
+`lib/main.dart`：
+
+```dart
+import 'package:flutter/material.dart';
+
+import 'core/bridge/js_channel.dart';
+import 'features/browser/browser_controller.dart';
+import 'features/browser/browser_page.dart';
+import 'features/capture/capture_controller.dart';
+
+/// Task 11 的临时接线（Task 17 会替换为正式应用壳）。
+void main() => runApp(const SpikeApp());
+
+class SpikeApp extends StatefulWidget {
+  const SpikeApp({super.key});
+
+  @override
+  State<SpikeApp> createState() => _SpikeAppState();
+}
+
+class _SpikeAppState extends State<SpikeApp> {
+  final BrowserController _browser = BrowserController();
+  final CaptureController _capture = CaptureController();
+  final JsChannelHolder _jsChannel = JsChannelHolder();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Spike',
+      home: Scaffold(
+        appBar: AppBar(title: const Text('平台可行性验证')),
+        body: BrowserPage(
+          initialUrl: Uri.parse('https://example.com'),
+          browser: _browser,
+          capture: _capture,
+          jsChannel: _jsChannel,
+        ),
+      ),
+    );
+  }
+}
+```
+
+- [ ] **Step 5: 给桥回调补上扫描上限提示**
 
 把 `onWebViewCreated` 里的 handler 改成下面这版（新增「扫到上限提示用户」的逻辑；`BrowserPage` 的 `onScanLimitReached` 字段已在 Step 3 的构造函数里声明）：
 
@@ -2661,7 +2708,7 @@ class _BrowserPageState extends State<BrowserPage> {
         );
 ```
 
-- [ ] **Step 5: 写地址栏、扫描状态条、错误页三个私有组件**
+- [ ] **Step 6: 写地址栏、扫描状态条、错误页三个私有组件**
 
 追加到 `browser_page.dart` 末尾：
 
@@ -2802,16 +2849,18 @@ class _ErrorView extends StatelessWidget {
 }
 ```
 
-- [ ] **Step 6: 静态分析**
+- [ ] **Step 7: 静态分析**
 
 Run: `/Users/ling/fvm/versions/3.47.4/bin/flutter analyze`
 
 Expected: `No issues found!`（若 `onProgressChanged` 等回调名与实际版本不符，按 `flutter_inappwebview` 6.x 的实际 API 改名，保持行为不变。）
 
-- [ ] **Step 7: 提交**
+再跑一遍既有单测确认没有回归：`/Users/ling/fvm/versions/3.47.4/bin/flutter test`（应仍全绿）。
+
+- [ ] **Step 8: 提交**
 
 ```bash
-git add lib/features/browser lib/core/bridge/js_channel.dart
+git add lib/features/browser lib/core/bridge/js_channel.dart lib/main.dart
 git commit -m "feat(browser): WebView 页（注入抓取脚本、桥回调、自动扫整页、错误页、崩溃重建）"
 ```
 
