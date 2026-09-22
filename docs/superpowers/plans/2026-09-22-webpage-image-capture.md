@@ -4515,6 +4515,18 @@ git add lib/features/gallery test/features/gallery
 git commit -m "feat(gallery): 图片面板（筛选栏、自适应网格、多选、下载操作栏）"
 ```
 
+**补记（Task 15 实施结果）**：已完成，分三次提交：`31cee8e`（实现）、`d09afba`（审查修复）、`5296f27`（性能补修）。全量 105 条用例全绿，`analyze` 无问题；规格审查与代码质量审查均通过。
+
+- **`visibleAssets` 缓存评估结论：不加缓存**。全量过滤+去重是 O(n) 线性（主要成本是 `variantKey` 里的 `Uri.tryParse`），且扫描期通知频率低（每屏 2 次、MutationObserver 300ms 节流），加缓存只换来失效风险。真正的问题是**重复计算**，已消除。
+- 相对计划代码的必要修正（均已复审确认）：
+  - `filter_bar.dart` 补 `import '../capture/image_filter.dart'`（计划漏写，`kAllFormats` 定义在此）。
+  - 测试 import 改 `../../support/fake_download.dart`；位于横向滚动区屏外的控件仍需 `ensureVisible`（来源 chip 在 420dp 下仍要滚动才可见）。
+  - 面板把 `visibleAssets` 快照与选中集**各只取一次**再逐层传递（`_ActionBar.selected`、`ImageGrid.selectedUrls`）。注意 `capture.selectedUrls` 返回 `Set.unmodifiable`，是**深拷贝**，写进循环条件会变成 O(N×S)（全选 3000 张实测 ≈14ms/帧）。
+  - 网格 `Image.network` 加 `cacheWidth/cacheHeight = kTileMaxExtent × devicePixelRatio`，避免缩略图按原分辨率解码撑爆 `ImageCache`。
+  - 筛选栏把「尺寸去重」开关前移到首位（420dp 首屏可见，已加位置断言防回归）；滑块用例改为真实 `tapAt` 分度，不再直接调 controller。
+  - 预览按钮由 16×16 的 `InkWell` 改为 `IconButton`（`iconSize:16` + `tightFor(32,32)` + `tapTargetSize: MaterialTapTargetSize.shrinkWrap`）。**`shrinkWrap` 不可省**：Material 3 默认 `padded` 会把命中区撑到 48×48，420dp 面板下会盖住 tile 中心并抢走点选手势（两条既有用例即变红）。
+- 已知取舍（本期不改，Task 17/18 留意）：SVG 缩略图必然破图（未引入 `flutter_svg`，`Image.network` 解不了 SVG，与「加载失败」占位混同）；切页「保留」后旧页实例仍以当前 `pageUrl` 作 Referer，可能 403；预览按钮 32dp 低于 48dp 可达性建议值；`isBusy` 进度文案、长按预览、「选中后被筛掉的图不进下载」暂无用例。
+
 ---
 
 ## Task 16: 大图预览与复制直链
