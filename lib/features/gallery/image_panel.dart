@@ -14,6 +14,7 @@ class ImagePanel extends StatelessWidget {
     required this.download,
     required this.onOpenPreview,
     this.onPermissionDenied,
+    this.onDownloadFailed,
   });
 
   final CaptureController capture;
@@ -22,6 +23,10 @@ class ImagePanel extends StatelessWidget {
 
   /// 下载因相册权限被拒时由外层弹引导。
   final VoidCallback? onPermissionDenied;
+
+  /// 非权限类失败（镜像 403、写盘失败等）时由外层提示。`downloadAll` 从不抛异常，
+  /// 不提就等于「点了没反应」。
+  final void Function(List<ImageAsset> failed)? onDownloadFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +60,7 @@ class ImagePanel extends StatelessWidget {
               download: download,
               selected: selected,
               onPermissionDenied: onPermissionDenied,
+              onDownloadFailed: onDownloadFailed,
             ),
           ],
         );
@@ -86,6 +92,7 @@ class _ActionBar extends StatelessWidget {
     required this.download,
     required this.selected,
     this.onPermissionDenied,
+    this.onDownloadFailed,
   });
 
   final CaptureController capture;
@@ -94,6 +101,7 @@ class _ActionBar extends StatelessWidget {
   /// 面板已算好的选中集（可见顺序），避免在此重复全量计算。
   final List<ImageAsset> selected;
   final VoidCallback? onPermissionDenied;
+  final void Function(List<ImageAsset> failed)? onDownloadFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +133,15 @@ class _ActionBar extends StatelessWidget {
                 ? null
                 : () async {
                     await download.downloadAll(selected);
-                    if (download.needsPermission) onPermissionDenied?.call();
+                    if (download.needsPermission) {
+                      onPermissionDenied?.call();
+                      return;
+                    }
+                    final failed = <ImageAsset>[
+                      for (final asset in selected)
+                        if (download.errorOf(asset.url) != null) asset,
+                    ];
+                    if (failed.isNotEmpty) onDownloadFailed?.call(failed);
                   },
             icon: const Icon(Icons.download),
             label: const Text('下载'),

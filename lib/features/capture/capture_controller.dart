@@ -126,6 +126,19 @@ class CaptureController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 只删这几个 URL（切换页面时用户选择「清空」）。
+  ///
+  /// 不用 clear()：新页 DOM 解析后约 300ms 抓取脚本就会推一批图，等用户在对话框上
+  /// 点「清空」时新页的图已经在 _byUrl 里了，一把清光会静默丢图。
+  void removeUrls(Iterable<String> urls) {
+    var changed = false;
+    for (final url in urls) {
+      if (_byUrl.remove(url) != null) changed = true;
+      _selected.remove(url);
+    }
+    if (changed) notifyListeners();
+  }
+
   /// 清空列表与选中态（切换页面时用户选择「清空」）。
   void clear() {
     _byUrl.clear();

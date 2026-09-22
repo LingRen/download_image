@@ -23,7 +23,6 @@ class BrowserPage extends StatefulWidget {
     required this.browser,
     required this.capture,
     required this.jsChannel,
-    this.onTapCaptureCount,
     this.onPageSwitchNeeded,
     this.onBlobChunk,
     this.onScanLimitReached,
@@ -35,11 +34,10 @@ class BrowserPage extends StatefulWidget {
   final CaptureController capture;
   final JsChannelHolder jsChannel;
 
-  /// 点击移动端「已捕获 N 张」浮动按钮。
-  final VoidCallback? onTapCaptureCount;
-
-  /// 检测到主框架跳到了新页面且列表非空时调用，返回用户选择。
-  final Future<PageSwitchDecision> Function(String newPageUrl)? onPageSwitchNeeded;
+  /// 检测到主框架跳到了新页面且列表非空时调用，返回用户选择（第一个参数是
+  /// 切换前的主框架 URL，第二个是新页 URL）。
+  final Future<PageSwitchDecision> Function(String previousUrl, String newUrl)?
+      onPageSwitchNeeded;
 
   /// blob 分块交给下载模块处理。
   final void Function(BlobChunk chunk)? onBlobChunk;
@@ -63,6 +61,10 @@ class _BrowserPageState extends State<BrowserPage> {
   /// 否则会退回 initialUrl，而不是用户当前所在的页面。
   String? _currentUrl;
   bool _autoScannedForCurrentUrl = false;
+
+  /// 主框架开始导航前那一批资产的 URL 快照。对话框弹出时新页的图可能已经进来了，
+  /// 「清空」只该清掉这些。
+  Set<String> _urlsBeforeNavigation = const {};
 
   @override
   void initState() {
@@ -98,7 +100,8 @@ class _BrowserPageState extends State<BrowserPage> {
   /// pushState 改地址后（无主框架加载）发出的消息。
   Future<void> _afterMainFrameLoad(InAppWebViewController controller, String url) async {
     final capture = widget.capture;
-    final isNewPage = _lastMainFrameUrl != null && _lastMainFrameUrl != url;
+    final previousUrl = _lastMainFrameUrl;
+    final isNewPage = previousUrl != null && previousUrl != url;
     _lastMainFrameUrl = url;
     if (isNewPage) {
       // 必须复位，否则新页不会自动扫描、且扫描状态条会停在上一页。
@@ -106,12 +109,19 @@ class _BrowserPageState extends State<BrowserPage> {
       _autoScannedForCurrentUrl = false;
       var keepAssets = true;
       if (capture.rawCount > 0) {
-        keepAssets = await widget.onPageSwitchNeeded?.call(url) != PageSwitchDecision.clear;
+        keepAssets =
+            await widget.onPageSwitchNeeded?.call(previousUrl, url) != PageSwitchDecision.clear;
       }
       if (keepAssets) {
         capture.keepAssetsForNewPage(url);
       } else {
-        capture.clear();
+        // 只删上一个页面的资产，别把新页已经推过来的图也清掉（见 Task 11 ⚠️ 段）。
+        if (_urlsBeforeNavigation.isEmpty) {
+          capture.clear();
+        } else {
+          capture.removeUrls(_urlsBeforeNavigation);
+        }
+        _urlsBeforeNavigation = const {};
       }
     }
     if (_autoScannedForCurrentUrl) return;
@@ -142,6 +152,16 @@ class _BrowserPageState extends State<BrowserPage> {
           browser: widget.browser,
           onSubmit: _goToAddressBarValue,
           onScanAgain: () => _controller == null ? null : _startScan(_controller!),
+        ),
+        ListenableBuilder(
+          listenable: widget.browser,
+          builder: (context, _) => widget.browser.isLoading
+              ? LinearProgressIndicator(
+                  key: const Key('page-loading'),
+                  value: widget.browser.progress.clamp(0.0, 1.0),
+                  minHeight: 2,
+                )
+              : const SizedBox.shrink(),
         ),
         ListenableBuilder(
           listenable: widget.capture,
@@ -220,6 +240,11 @@ class _BrowserPageState extends State<BrowserPage> {
         );
       },
       onLoadStart: (controller, url) {
+        // 只在确实是「换页」时快照，刷新同一页不重置（否则对话框来不及弹就先被清）。
+        final target = url?.toString();
+        if (target != null && target != _lastMainFrameUrl) {
+          _urlsBeforeNavigation = widget.capture.rawAssets.map((a) => a.url).toSet();
+        }
         widget.browser.updateLoading(loading: true, progress: 0);
       },
       onLoadStop: (controller, url) async {
