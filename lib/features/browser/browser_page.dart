@@ -1,78 +1,381 @@
+import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
-/// 临时探针：只验证「页面能加载 + 注入 JS 能执行 + callHandler 能回传」。
-/// Task 11 会把这个文件整体替换为正式实现。
-///
-/// payload 中额外携带 `title: document.title`，用于机器判定「页面确实加载成功」。
-const String _probeScript = '''
-(function () {
-  function fire() {
-    if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) return false;
-    window.flutter_inappwebview.callHandler('imgcat', JSON.stringify({
-      type: 'batch',
-      pageUrl: location.href,
-      title: document.title,
-      assets: [{ url: location.href + 'probe.png', w: 120, h: 80, size: 1024, mime: 'image/png', source: 'img' }]
-    }));
-    return true;
-  }
-  var timer = setInterval(function () { if (fire()) clearInterval(timer); }, 200);
-  setTimeout(function () { clearInterval(timer); }, 10000);
-})();
-''';
+import '../../core/bridge/bridge_protocol.dart';
+import '../../core/bridge/js_channel.dart';
+import '../capture/capture_controller.dart';
+import '../capture/capture_script.dart';
+import 'browser_controller.dart';
+import 'url_normalizer.dart';
+import 'webview_js_channel.dart';
+
+/// 页面跳转且列表非空时的确认结果。
+enum PageSwitchDecision { keep, clear }
 
 class BrowserPage extends StatefulWidget {
-  const BrowserPage({super.key, required this.initialUrl});
+  const BrowserPage({
+    super.key,
+    required this.initialUrl,
+    required this.browser,
+    required this.capture,
+    required this.jsChannel,
+    this.onTapCaptureCount,
+    this.onPageSwitchNeeded,
+    this.onBlobChunk,
+    this.onScanLimitReached,
+    this.contentOverride,
+  });
 
   final Uri initialUrl;
+  final BrowserController browser;
+  final CaptureController capture;
+  final JsChannelHolder jsChannel;
+
+  /// 点击移动端「已捕获 N 张」浮动按钮。
+  final VoidCallback? onTapCaptureCount;
+
+  /// 检测到主框架跳到了新页面且列表非空时调用，返回用户选择。
+  final Future<PageSwitchDecision> Function(String newPageUrl)? onPageSwitchNeeded;
+
+  /// blob 分块交给下载模块处理。
+  final void Function(BlobChunk chunk)? onBlobChunk;
+
+  /// 扫描撞到 40 屏 / 60 秒上限时提示用户。
+  final VoidCallback? onScanLimitReached;
+
+  /// 仅测试使用：非空时不创建真实 WebView（平台视图在 widget 测试里不可用）。
+  final Widget? contentOverride;
 
   @override
   State<BrowserPage> createState() => _BrowserPageState();
 }
 
 class _BrowserPageState extends State<BrowserPage> {
-  String _received = '（尚未收到协议消息）';
+  final TextEditingController _addressController = TextEditingController();
+  Key _webViewKey = UniqueKey();
+  String? _lastMainFrameUrl;
+  bool _autoScannedForCurrentUrl = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _addressController.text = widget.initialUrl.toString();
+  }
+
+  @override
+  void dispose() {
+    _addressController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _goToAddressBarValue() async {
+    try {
+      final url = normalizeInputUrl(_addressController.text);
+      await widget.browser.load(Uri.parse(url));
+    } on FormatException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// 主框架加载完成：处理「已切换页面」提示，然后自动扫整页。
+  ///
+  /// 已知取舍：导航瞬间旧文档可能还留有排队中的桥消息，它们会把页 URL 短暂写回旧页；
+  /// 下一条新页消息到达即自行纠正。不按 URL 过滤跨页消息——那会误杀 SPA 用
+  /// pushState 改地址后（无主框架加载）发出的消息。
+  Future<void> _afterMainFrameLoad(InAppWebViewController controller, String url) async {
+    final capture = widget.capture;
+    final isNewPage = _lastMainFrameUrl != null && _lastMainFrameUrl != url;
+    _lastMainFrameUrl = url;
+    if (isNewPage) {
+      // 必须复位，否则新页不会自动扫描、且扫描状态条会停在上一页。
+      // keepAssetsForNewPage 是复位扫描态的唯一出口（clear 会连列表一起清掉）。
+      _autoScannedForCurrentUrl = false;
+      var keepAssets = true;
+      if (capture.rawCount > 0) {
+        keepAssets = await widget.onPageSwitchNeeded?.call(url) != PageSwitchDecision.clear;
+      }
+      if (keepAssets) {
+        capture.keepAssetsForNewPage(url);
+      } else {
+        capture.clear();
+      }
+    }
+    if (_autoScannedForCurrentUrl) return;
+    _autoScannedForCurrentUrl = true;
+    unawaited(_startScan(controller));
+  }
+
+  Future<void> _startScan(InAppWebViewController controller) async {
+    if (widget.capture.isScanning) return;
+    await controller.evaluateJavascript(
+      source: 'window.__imgcat && window.__imgcat.scan('
+          '{"maxScreens": $kMaxScanScreens, "timeoutMs": ${kScanTimeout.inMilliseconds}});',
+    );
+  }
+
+  Future<void> _abortScan(InAppWebViewController controller) async {
+    await controller.evaluateJavascript(source: 'window.__imgcat && window.__imgcat.abort({});');
+  }
+
+  InAppWebViewController? _controller;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text(
-            '收到协议消息: $_received',
-            key: const Key('probe-output'),
-          ),
+        _AddressBar(
+          controller: _addressController,
+          browser: widget.browser,
+          onSubmit: _goToAddressBarValue,
+          onScanAgain: () => _controller == null ? null : _startScan(_controller!),
+        ),
+        ListenableBuilder(
+          listenable: widget.capture,
+          builder: (context, _) {
+            final scan = widget.capture.scan;
+            if (scan == null) return const SizedBox.shrink();
+            return _ScanStatusBar(
+              scan: scan,
+              onAbort: _controller == null ? null : () => _abortScan(_controller!),
+            );
+          },
         ),
         Expanded(
-          child: InAppWebView(
-            initialUrlRequest:
-                URLRequest(url: WebUri(widget.initialUrl.toString())),
-            initialUserScripts: UnmodifiableListView<UserScript>([
-              UserScript(
-                source: _probeScript,
-                injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-                forMainFrameOnly: false,
-              ),
-            ]),
-            onWebViewCreated: (controller) {
-              controller.addJavaScriptHandler(
-                handlerName: 'imgcat',
-                callback: (args) {
-                  final raw = args.isNotEmpty ? args.first : null;
-                  // 偏差 B：把原始消息打印到 stdout，便于机器判定 spike 结果。
-                  debugPrint('SPIKE_HANDLER_RECEIVED: ${raw?.toString() ?? 'null'}');
-                  setState(() => _received = raw?.toString() ?? 'null');
-                  return null;
-                },
-              );
+          child: ListenableBuilder(
+            listenable: widget.browser,
+            builder: (context, _) {
+              final error = widget.browser.errorText;
+              if (error != null) {
+                return _ErrorView(message: error, onRetry: widget.browser.reload);
+              }
+              return widget.contentOverride ?? _buildWebView();
             },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildWebView() {
+    return InAppWebView(
+      key: _webViewKey,
+      initialUrlRequest: URLRequest(url: WebUri(widget.initialUrl.toString())),
+      initialUserScripts: UnmodifiableListView<UserScript>([
+        UserScript(
+          source: kCaptureScript,
+          injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+          forMainFrameOnly: false,
+        ),
+      ]),
+      onWebViewCreated: (controller) {
+        _controller = controller;
+        widget.browser.attachWebView(controller);
+        widget.jsChannel.attach(WebViewJsChannel(controller));
+        // 抓取侧两处已知取舍：出现「少了一张图」时先看这里，别当 bug 反复修。
+        // 1) 桥就绪后 flush 队列若抛错，这一批会被静默丢弃（不再重试）；
+        // 2) srcset 候选拿不到宽高，其尺寸筛选与变体去重退化为「先到先得」。
+        controller.addJavaScriptHandler(
+          handlerName: kBridgeHandlerName,
+          callback: (args) {
+            final message = BridgeMessage.parse(args.isNotEmpty ? args.first : null);
+            if (message == null) return null;
+            if (message is BlobChunk) {
+              widget.onBlobChunk?.call(message);
+              return null;
+            }
+            final shouldWarnLimit = message is ScanProgress &&
+                message.state == ScanState.limit &&
+                !widget.capture.scanReachedLimit;
+            widget.capture.accept(message);
+            if (shouldWarnLimit) widget.onScanLimitReached?.call();
+            return null;
+          },
+        );
+      },
+      onLoadStart: (controller, url) {
+        widget.browser.updateLoading(loading: true, progress: 0);
+      },
+      onLoadStop: (controller, url) async {
+        widget.browser.updateLoading(loading: false, progress: 1);
+        final current = url?.toString();
+        if (current != null) {
+          _addressController.text = current;
+          await _afterMainFrameLoad(controller, current);
+        }
+        try {
+          final canBack = await controller.canGoBack();
+          final canForward = await controller.canGoForward();
+          widget.browser.updateNavigationState(canGoBack: canBack, canGoForward: canForward);
+        } catch (_) {
+          // 页面正在销毁时忽略
+        }
+      },
+      onProgressChanged: (controller, progress) {
+        widget.browser.updateLoading(loading: progress < 100, progress: progress / 100);
+      },
+      onReceivedError: (controller, request, error) {
+        if (request.isForMainFrame == true) {
+          widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
+        }
+      },
+      onReceivedHttpError: (controller, request, response) {
+        if (request.isForMainFrame == true && (response.statusCode ?? 0) >= 400) {
+          widget.browser.setError('页面返回 ${response.statusCode}');
+        }
+      },
+      // Android 渲染进程崩溃：重建 WebView，已抓列表保留在 CaptureController 里。
+      onRenderProcessGone: (controller, detail) {
+        if (detail.didCrash && Platform.isAndroid) {
+          setState(() {
+            _webViewKey = UniqueKey();
+            _autoScannedForCurrentUrl = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('页面渲染进程崩溃，已重建，已抓列表保留')),
+          );
+          return;
+        }
+      },
+    );
+  }
+}
+
+class _AddressBar extends StatelessWidget {
+  const _AddressBar({
+    required this.controller,
+    required this.browser,
+    required this.onSubmit,
+    required this.onScanAgain,
+  });
+
+  final TextEditingController controller;
+  final BrowserController browser;
+  final VoidCallback onSubmit;
+  final VoidCallback onScanAgain;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Row(
+        children: [
+          ListenableBuilder(
+            listenable: browser,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  key: const Key('nav-back'),
+                  onPressed: browser.canGoBack ? browser.goBack : null,
+                  icon: const Icon(Icons.arrow_back),
+                  tooltip: '后退',
+                ),
+                IconButton(
+                  key: const Key('nav-forward'),
+                  onPressed: browser.canGoForward ? browser.goForward : null,
+                  icon: const Icon(Icons.arrow_forward),
+                  tooltip: '前进',
+                ),
+                IconButton(
+                  key: const Key('nav-reload'),
+                  onPressed: browser.reload,
+                  icon: const Icon(Icons.refresh),
+                  tooltip: '刷新',
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TextField(
+              key: const Key('address-field'),
+              controller: controller,
+              textInputAction: TextInputAction.go,
+              onSubmitted: (_) => onSubmit(),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                hintText: '输入网址，例如 example.com',
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            key: const Key('address-go'),
+            onPressed: onSubmit,
+            icon: const Icon(Icons.arrow_circle_right_outlined),
+            tooltip: '打开',
+          ),
+          IconButton(
+            key: const Key('scan-again'),
+            onPressed: onScanAgain,
+            icon: const Icon(Icons.search),
+            tooltip: '重新扫描整页',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanStatusBar extends StatelessWidget {
+  const _ScanStatusBar({required this.scan, required this.onAbort});
+
+  final ScanProgress scan;
+  final VoidCallback? onAbort;
+
+  @override
+  Widget build(BuildContext context) {
+    final scanner = scan;
+    if (scanner.state == ScanState.done || scanner.state == ScanState.aborted) {
+      return const SizedBox.shrink();
+    }
+    final text = scanner.state == ScanState.limit
+        ? '已达扫描上限，可手动继续滚动后再次扫描'
+        : '正在扫描第 ${scanner.screen}/${scanner.maxScreens} 屏 · 已捕获 ${scanner.found} 张';
+    return Container(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, key: const Key('scan-status'), style: Theme.of(context).textTheme.bodySmall)),
+          if (scanner.isRunning && onAbort != null)
+            TextButton(key: const Key('scan-abort'), onPressed: onAbort, child: const Text('中断')),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  const _ErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off, size: 48),
+          const SizedBox(height: 12),
+          Text(message, key: const Key('page-error'), textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton(key: const Key('page-retry'), onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
     );
   }
 }
