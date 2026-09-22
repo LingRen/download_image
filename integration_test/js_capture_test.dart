@@ -54,8 +54,8 @@ const String _fixtureHtml = '''
 </body></html>
 ''';
 
-/// 页面引用到的全部图片路径 → 内在尺寸。这是「页面里有哪些图」的唯一真源：
-/// 服务端按它出图，[_Harness.expectedUrls] 也由它的键派生。
+/// 页面与测试共用的图片路径 → 内在尺寸。这是「有哪些图」的唯一真源：服务端按它
+/// 出图，[_Harness.expectedUrls] 也由它的键派生（`scroll-f`/`probe-g` 由测试注入）。
 const Map<String, List<int>> _imageSpec = {
   '/img/a.jpg': [300, 200],
   '/img/b.png': [120, 120],
@@ -117,7 +117,8 @@ Future<void> _waitQuiet(
       return;
     }
   }
-  fail('增量通道在 ${quiet.inMilliseconds}ms 静默窗口内始终没有稳定下来');
+  fail('增量通道在 ${quiet.inMilliseconds}ms 静默窗口内始终没有稳定下来'
+      '（当前计数 ${counter()}，已等待 ${DateTime.now().difference(since).inMilliseconds}ms）');
 }
 
 /// fixture 服务器 + WebView + 桥 + 各通道收集器。
@@ -219,7 +220,9 @@ Future<_Harness> _pumpFixture(
           ),
         ]),
         onWebViewCreated: (created) {
-          controllerCompleter.complete(created);
+          if (!controllerCompleter.isCompleted) {
+            controllerCompleter.complete(created);
+          }
           jsChannel.attach(WebViewJsChannel(created));
           created.addJavaScriptHandler(
             handlerName: kBridgeHandlerName,
@@ -382,7 +385,17 @@ void main() {
         reason: '尺寸未知的图不参与尺寸过滤，因此它会留在可见列表里');
 
     // ---------- 扫描态复位（Task 17 遗留）----------
-    // 先人为造出「扫描进行中」的前置状态：否则此刻 _scan 早已是 done，
+    // 先证明 limit 进度会置位 scanReachedLimit：否则下面断言它为 false 是恒真的。
+    capture.accept(ScanProgress(
+      state: ScanState.limit,
+      pageUrl: harness.fixtureUrl,
+      screen: 40,
+      maxScreens: 40,
+    ));
+    expect(capture.scanReachedLimit, isTrue,
+        reason: 'limit 进度必须置位 scanReachedLimit');
+
+    // 再造出「扫描进行中」的前置状态：否则此刻 _scan 早已是 done，
     // 即便 keepAssetsForNewPage 整段删掉，isScanning 也照样是 false，断言恒真。
     capture.accept(ScanProgress(
       state: ScanState.progress,
