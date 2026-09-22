@@ -2646,6 +2646,13 @@ class _BrowserPageState extends State<BrowserPage> {
         // 取消类错误不是真失败：重定向/被取代的主框架请求常常报这个，
         // 若当成失败弹错误页，会把错误页永久盖在正常加载好的页面上。
         if (error.type == WebResourceErrorType.CANCELLED) return;
+        // 主框架失败也必须复位扫描态，否则「扫描中失败 → 点重试加载同一 URL」时
+        // isNewPage 为 false、_autoScannedForCurrentUrl 仍为 true、capture.scan
+        // 仍停在 progress：状态条永久转圈且「重新扫描整页」永久失效。
+        // 用 _lastMainFrameUrl（最后一次真正加载完成的主框架 URL）而不是失败的目标 URL：
+        // 列表里的资产来自那个页面，降级下载拼 Referer 时才对得上。
+        _autoScannedForCurrentUrl = false;
+        widget.capture.keepAssetsForNewPage(_lastMainFrameUrl ?? widget.initialUrl.toString());
         widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
       },
       onReceivedHttpError: (controller, request, response) {
@@ -2904,10 +2911,10 @@ git commit -m "feat(browser): WebView 页（注入抓取脚本、桥回调、自
 
 「保留/清空」确认发生在**主框架加载完成之后**，而 `kCaptureScript` 的 PerformanceObserver / MutationObserver 在新页 DOM 解析后约 300ms 就会自行推一批图。等用户回答对话框时新页的图**已经在 `_capture` 里**，此时 `capture.clear()` 会把它们一并抹掉；而 `flush()` 只推「新增/有变化」的条目，后续 `scan()` 不会重新推送 → **静默丢图**。
 
-修法（Task 17 落地）：
-1. 在 `onLoadStart`（主框架）快照旧页资产：`_oldPageUrls = capture.rawAssets.map((a) => a.url).toSet();`
-2. 给 `CaptureController` 加 `void removeUrls(Iterable<String> urls)`（同时从 `_selected` 移除），清空分支由 `clear()` 改为 `removeUrls(_oldPageUrls)`。
-3. 对话框要显示「上一个页面」：回调签名改为 `Future<PageSwitchDecision> Function(String previousUrl, String newUrl)?`（`previousUrl` 是更新前的 `_lastMainFrameUrl`），不要让 Task 17 读 `capture.pageUrl` —— 那时它已被新页消息覆写。
+修法（Task 17 的 **Step 5** 落地，三处都在，缺一条都修不掉）：
+1. `lib/features/capture/capture_controller.dart` 加 `void removeUrls(Iterable<String> urls)`：按 URL 从 `_byUrl` 删除，并同步从 `_selected` 移除（`clear()` 保留不动）。注意这是 Task 10 产出的文件，只加这一个方法、别顺手改别的。
+2. `lib/features/browser/browser_page.dart`：新增字段 `Set<String> _urlsBeforeNavigation = const {};`，在 `onLoadStart`（主框架）里先快照 `widget.capture.rawAssets.map((a) => a.url).toSet()`；`_afterMainFrameLoad` 的 clear 分支由 `capture.clear()` 改为 `capture.removeUrls(_urlsBeforeNavigation)`（空集时才退化为 `clear()`）。
+3. 对话框要显示「上一个页面」：回调签名改为 `Future<PageSwitchDecision> Function(String previousUrl, String newUrl)?`（`previousUrl` 是更新前的 `_lastMainFrameUrl`），`BrowserPage` 传参时用更新前的值；**不要让 Task 17 读 `capture.pageUrl`** —— 那时它已被新页消息覆写。
 
 ---
 
@@ -4764,12 +4771,15 @@ class _HomeShellState extends State<HomeShell> {
         );
   }
 
-  Future<PageSwitchDecision> _askPageSwitch(String newPageUrl) async {
+  /// 两个参数都来自 BrowserPage 传进来的快照：`previousUrl` 是切换前的主框架
+  /// URL。不要在这里读 `_capture.pageUrl` —— 新页的抓取消息通常已经把它覆写了。
+  Future<PageSwitchDecision> _askPageSwitch(String previousUrl, String newPageUrl) async {
     final decision = await showDialog<PageSwitchDecision>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('页面已切换'),
-        content: Text('已离开上一个页面（${_capture.pageUrl ?? '未知'}）。是否清空已抓取的图片列表？'),
+        content: Text('已从 $previousUrl 切换到 $newPageUrl。\n是否清空上一个页面抓到的图片？\n'
+            '（只清空该页抓到的图，新页面已抓到的会保留）'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, PageSwitchDecision.keep),
@@ -4933,7 +4943,110 @@ if (isWide && !_panelCollapsed)
   ),
 ```
 
-- [ ] **Step 5: 实现 Windows WebView2 检测**
+- [ ] **Step 5: 修「切换页面清空」会连新页资产一起删（Task 11 ⚠️ 段的三件事，必须一起做）**
+
+背景见 Task 11 末尾的 ⚠️ 段：确认对话框在**新页加载完之后**才弹，新页的图往往已经在列表里，此时 `capture.clear()` 会把它们一并抹掉，而 `flush()` 只推增量、后续 `scan()` 也不会重推 → 静默丢图。
+
+5.1 给 `CaptureController` 加一个只删指定 URL 的方法（追加到 `clear()` 上方）：
+
+```dart
+  /// 只删这几个 URL（切换页面时用户选择「清空」）。
+  ///
+  /// 不用 clear()：新页 DOM 解析后约 300ms 抓取脚本就会推一批图，等用户在对话框上
+  /// 点「清空」时新页的图已经在 _byUrl 里了，一把清光会静默丢图。
+  void removeUrls(Iterable<String> urls) {
+    var changed = false;
+    for (final url in urls) {
+      if (_byUrl.remove(url) != null) changed = true;
+      _selected.remove(url);
+    }
+    if (changed) notifyListeners();
+  }
+```
+
+5.2 给 `CaptureController` 补一条测试（追加到 `test/features/capture/capture_controller_test.dart`）：
+
+```dart
+  test('removeUrls 只删指定 URL，新页资产与扫描状态不受影响', () {
+    final controller = CaptureController();
+    controller
+      ..accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: [
+        ImageAsset(url: 'https://a.com/1.png', source: AssetSource.img),
+      ]))
+      ..toggleSelection('https://a.com/1.png')
+      // 新页的图（模拟：对话框弹出时已经抓到了）
+      ..accept(CaptureBatch(pageUrl: 'https://b.com/p', assets: [
+        ImageAsset(url: 'https://b.com/2.png', source: AssetSource.img),
+      ]))
+      ..removeUrls(['https://a.com/1.png']);
+
+    expect(controller.rawAssets.map((a) => a.url), ['https://b.com/2.png']);
+    expect(controller.selectedUrls, isEmpty, reason: '被删掉的 URL 也要退出选中态');
+    expect(controller.pageUrl, 'https://b.com/p', reason: '不该动页面 URL');
+  });
+```
+
+（`ImageAsset` 的必填参数以 `lib/core/model/image_asset.dart` 的构造函数为准，上面的 `source:` 若与此前用例写法不一致就照抄既有用例。）
+
+5.3 `lib/features/browser/browser_page.dart` 改三处：
+
+```dart
+  /// 主框架开始导航前那一批资产的 URL 快照。对话框弹出时新页的图可能已经进来了，
+  /// 「清空」只该清掉这些。
+  Set<String> _urlsBeforeNavigation = const {};
+```
+
+```dart
+      onLoadStart: (controller, url) {
+        // 只在确实是「换页」时快照，刷新同一页不重置（否则对话框来不及弹就先被清）。
+        final target = url?.toString();
+        if (target != null && target != _lastMainFrameUrl) {
+          _urlsBeforeNavigation = widget.capture.rawAssets.map((a) => a.url).toSet();
+        }
+        widget.browser.updateLoading(loading: true, progress: 0);
+      },
+```
+
+`_afterMainFrameLoad` 的 clear 分支：
+
+```dart
+      } else {
+        // 只删上一个页面的资产，别把新页已经推过来的图也清掉（见 Task 11 ⚠️ 段）。
+        if (_urlsBeforeNavigation.isEmpty) {
+          capture.clear();
+        } else {
+          capture.removeUrls(_urlsBeforeNavigation);
+        }
+        _urlsBeforeNavigation = const {};
+      }
+```
+
+并且把回调改成带 `previousUrl` 的签名（更新 `_lastMainFrameUrl` **之前**取旧值）：
+
+```dart
+    final previousUrl = _lastMainFrameUrl;
+    final isNewPage = previousUrl != null && previousUrl != url;
+    _lastMainFrameUrl = url;
+    if (isNewPage) {
+      _autoScannedForCurrentUrl = false;
+      var keepAssets = true;
+      if (capture.rawCount > 0) {
+        keepAssets = await widget.onPageSwitchNeeded?.call(previousUrl, url) !=
+            PageSwitchDecision.clear;
+      }
+      // …keep/else 分支同前
+    }
+```
+
+`onPageSwitchNeeded` 字段类型同步改为：
+
+```dart
+  final Future<PageSwitchDecision> Function(String previousUrl, String newUrl)? onPageSwitchNeeded;
+```
+
+5.4 跑测试确认没回归：`/Users/ling/fvm/versions/3.47.4/bin/flutter test`。
+
+- [ ] **Step 6: 实现 Windows WebView2 检测**
 
 `lib/features/browser/platform/webview2_check.dart`：
 
@@ -5011,13 +5124,13 @@ class _WebView2MissingApp extends StatelessWidget {
 }
 ```
 
-- [ ] **Step 7: 运行测试**
+- [ ] **Step 8: 运行测试**
 
 Run: `/Users/ling/fvm/versions/3.47.4/bin/flutter test test/app/home_shell_test.dart`
 
 Expected: `All tests passed!`
 
-- [ ] **Step 8: 全量测试 + 分析**
+- [ ] **Step 9: 全量测试 + 分析**
 
 Run:
 
@@ -5027,10 +5140,12 @@ Run:
 
 Expected: `No issues found!` 与 `All tests passed!`
 
-- [ ] **Step 9: 提交**
+- [ ] **Step 10: 提交**
 
 ```bash
-git add lib/app lib/main.dart test/app
+git add lib/app lib/main.dart test/app lib/features/browser/browser_page.dart \
+  lib/features/capture/capture_controller.dart \
+  test/features/capture/capture_controller_test.dart
 git commit -m "feat(app): 应用壳、900dp 响应式布局、WebView2 缺失引导"
 ```
 
