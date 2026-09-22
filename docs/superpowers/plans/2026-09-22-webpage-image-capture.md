@@ -351,6 +351,15 @@ git add lib/main.dart lib/features/browser/browser_page.dart docs/superpowers/pl
 git commit -m "spike: 验证四端 WebView 注入与 JS 桥回传可行性"
 ```
 
+**实测结论：**
+
+| 平台 | 日期 | 结果 | 备注 |
+|---|---|---|---|
+| macOS | 2026-09-22 | **通过** | 三条判定全中：①`example.com` 正常渲染（payload `title:"Example Domain"`）；②`callHandler` 回传成功（stdout `SPIKE_HANDLER_RECEIVED: {"type":"batch","pageUrl":"https://example.com/","title":"Example Domain",...}`）；③无 `MissingPluginException` / 崩溃。构建前需为 `DebugProfile.entitlements` 与 `Release.entitlements` 追加 `com.apple.security.network.client`（macOS 沙盒缺此权限则无法出站联网，页面加载必失败）。另：本机在沙箱内执行 xcodebuild 会报 `sandbox-exec: sandbox_apply: Operation not permitted`，需在非沙箱环境构建。 |
+| Windows | 2026-09-22 | **未验证** | 本机无 Windows 机器，无法执行 Step 4。Windows 端代码就绪但未验证，后续交付说明须写明。 |
+| Android | — | 待 Task 18 冒烟 | 本任务未覆盖。 |
+| iOS | — | 待 Task 18 冒烟 | 本机 iOS 模拟器运行时未安装，本任务不尝试。 |
+
 ---
 
 ## Task 3: ImageAsset 领域模型
