@@ -134,8 +134,8 @@ void main() {
     expect(find.byKey(const Key('tile-https://a.com/i.jpg?w=900')), findsOneWidget);
     expect(find.byKey(const Key('tile-https://a.com/i.jpg?w=300')), findsNothing);
 
-    await tester.ensureVisible(find.byKey(const Key('dedupe-switch')));
-    await tester.pump();
+    // M3 已把开关移到首位：手机宽度下应首屏可见，无需滚动。
+    expect(tester.getTopLeft(find.byKey(const Key('dedupe-switch'))).dx, lessThan(420));
     await tester.tap(find.byKey(const Key('dedupe-switch')));
     await tester.pump();
     expect(capture.filter.mergeVariants, isFalse);

@@ -24,6 +24,7 @@ class ImageGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedUrls = capture.selectedUrls; // selectedUrls 是深拷贝，循环外只取一次
     return GridView.builder(
       padding: const EdgeInsets.all(6),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -35,7 +36,7 @@ class ImageGrid extends StatelessWidget {
       itemCount: assets.length,
       itemBuilder: (context, index) => _ImageTile(
         asset: assets[index],
-        selected: capture.selectedUrls.contains(assets[index].url),
+        selected: selectedUrls.contains(assets[index].url),
         pageUrl: pageUrl,
         onTap: () => capture.toggleSelection(assets[index].url),
         onLongPress: () => onOpenPreview(assets[index]),

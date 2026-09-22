@@ -29,9 +29,10 @@ class ImagePanel extends StatelessWidget {
       listenable: Listenable.merge([capture, download]),
       builder: (context, _) {
         final assets = capture.visibleAssets;
+        final selectedUrls = capture.selectedUrls; // selectedUrls 是深拷贝，每帧只取一次
         final selected = [
           for (final asset in assets)
-            if (capture.selectedUrls.contains(asset.url)) asset,
+            if (selectedUrls.contains(asset.url)) asset,
         ];
         return Column(
           key: const Key('image-panel'),
