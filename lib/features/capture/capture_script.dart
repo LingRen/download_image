@@ -49,8 +49,11 @@ const String kCaptureScript = r'''
   }
 
   window.addEventListener('flutterInAppWebViewPlatformReady', markReady);
+  // 轮询必须持续到 ready 为真：仅凭「桥对象存在」就停表，会在
+  // 「对象存在但 callHandler 尚不可用、且就绪事件被错过」时让 outbox 永久卡死。
   var readyTimer = setInterval(function () {
-    if (bridgeAvailable()) { markReady(); clearInterval(readyTimer); }
+    if (ready) { clearInterval(readyTimer); return; }
+    markReady();
   }, 100);
   setTimeout(function () { clearInterval(readyTimer); }, 10000);
 
