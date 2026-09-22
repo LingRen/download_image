@@ -2395,6 +2395,7 @@ class BrowserController extends ChangeNotifier {
 
 ```dart
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -2775,7 +2776,7 @@ class _AddressBar extends StatelessWidget {
           IconButton(
             key: const Key('address-go'),
             onPressed: onSubmit,
-            icon: const Icon(Icons.arrow_forward_circle_outlined),
+            icon: const Icon(Icons.arrow_circle_right_outlined),
             tooltip: '打开',
           ),
           IconButton(
