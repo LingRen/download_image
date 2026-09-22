@@ -22,6 +22,11 @@ class BrowserController extends ChangeNotifier {
     _webViewController = controller;
   }
 
+  /// WebView 被销毁（页面关闭）时清空引用，避免继续对失效 controller 发指令。
+  void detachWebView() {
+    _webViewController = null;
+  }
+
   void updateLoading({required bool loading, double? progress}) {
     _loading = loading;
     if (progress != null) _progress = progress;
@@ -50,7 +55,13 @@ class BrowserController extends ChangeNotifier {
     await _webViewController?.reload();
   }
 
-  Future<void> goBack() async => _webViewController?.goBack();
+  Future<void> goBack() async {
+    setError(null);
+    await _webViewController?.goBack();
+  }
 
-  Future<void> goForward() async => _webViewController?.goForward();
+  Future<void> goForward() async {
+    setError(null);
+    await _webViewController?.goForward();
+  }
 }

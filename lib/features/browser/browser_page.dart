@@ -58,6 +58,10 @@ class _BrowserPageState extends State<BrowserPage> {
   final TextEditingController _addressController = TextEditingController();
   Key _webViewKey = UniqueKey();
   String? _lastMainFrameUrl;
+
+  /// 最近一次成功加载的主框架 URL。WebView 重建（渲染进程崩溃）时用它当入口，
+  /// 否则会退回 initialUrl，而不是用户当前所在的页面。
+  String? _currentUrl;
   bool _autoScannedForCurrentUrl = false;
 
   @override
@@ -69,12 +73,17 @@ class _BrowserPageState extends State<BrowserPage> {
   @override
   void dispose() {
     _addressController.dispose();
+    // 必须 detach：否则 JsChannelHolder 会一直持有指向已销毁 controller 的通道，
+    // 下载模块（Task 14）调用它时既不抛 StateError 也发不出去，表现为「点了没反应」。
+    widget.jsChannel.detach();
+    widget.browser.detachWebView();
     super.dispose();
   }
 
   Future<void> _goToAddressBarValue() async {
     try {
       final url = normalizeInputUrl(_addressController.text);
+      _currentUrl = url;
       await widget.browser.load(Uri.parse(url));
     } on FormatException catch (e) {
       if (!mounted) return;
@@ -149,11 +158,24 @@ class _BrowserPageState extends State<BrowserPage> {
           child: ListenableBuilder(
             listenable: widget.browser,
             builder: (context, _) {
-              final error = widget.browser.errorText;
-              if (error != null) {
-                return _ErrorView(message: error, onRetry: widget.browser.reload);
-              }
-              return widget.contentOverride ?? _buildWebView();
+              // 错误页只覆盖、绝不替换 WebView：一旦把 InAppWebView 移出 widget 树，
+              // 平台视图会被销毁、controller 变成失效引用，此后「重试」「地址栏」
+              // 「前进后退」全部失效（debug 抛 FlutterError，release 静默无效）。
+              return Stack(
+                children: [
+                  widget.contentOverride ?? _buildWebView(),
+                  if (widget.browser.errorText != null)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Theme.of(context).colorScheme.surface,
+                        child: _ErrorView(
+                          message: widget.browser.errorText!,
+                          onRetry: () => unawaited(widget.browser.reload()),
+                        ),
+                      ),
+                    ),
+                ],
+              );
             },
           ),
         ),
@@ -164,7 +186,7 @@ class _BrowserPageState extends State<BrowserPage> {
   Widget _buildWebView() {
     return InAppWebView(
       key: _webViewKey,
-      initialUrlRequest: URLRequest(url: WebUri(widget.initialUrl.toString())),
+      initialUrlRequest: URLRequest(url: WebUri(_currentUrl ?? widget.initialUrl.toString())),
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: kCaptureScript,
@@ -204,6 +226,7 @@ class _BrowserPageState extends State<BrowserPage> {
         widget.browser.updateLoading(loading: false, progress: 1);
         final current = url?.toString();
         if (current != null) {
+          _currentUrl = current;
           _addressController.text = current;
           await _afterMainFrameLoad(controller, current);
         }
@@ -219,9 +242,11 @@ class _BrowserPageState extends State<BrowserPage> {
         widget.browser.updateLoading(loading: progress < 100, progress: progress / 100);
       },
       onReceivedError: (controller, request, error) {
-        if (request.isForMainFrame == true) {
-          widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
-        }
+        if (request.isForMainFrame != true) return;
+        // 取消类错误不是真失败：重定向/被取代的主框架请求常常报这个，
+        // 若当成失败弹错误页，会把错误页永久盖在正常加载好的页面上。
+        if (error.type == WebResourceErrorType.CANCELLED) return;
+        widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
       },
       onReceivedHttpError: (controller, request, response) {
         if (request.isForMainFrame == true && (response.statusCode ?? 0) >= 400) {
@@ -230,16 +255,15 @@ class _BrowserPageState extends State<BrowserPage> {
       },
       // Android 渲染进程崩溃：重建 WebView，已抓列表保留在 CaptureController 里。
       onRenderProcessGone: (controller, detail) {
-        if (detail.didCrash && Platform.isAndroid) {
-          setState(() {
-            _webViewKey = UniqueKey();
-            _autoScannedForCurrentUrl = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('页面渲染进程崩溃，已重建，已抓列表保留')),
-          );
-          return;
-        }
+        if (!detail.didCrash || !Platform.isAndroid) return;
+        if (!mounted) return;
+        setState(() {
+          _webViewKey = UniqueKey();
+          _autoScannedForCurrentUrl = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('页面渲染进程崩溃，已重建，已抓列表保留')),
+        );
       },
     );
   }
@@ -361,7 +385,7 @@ class _ErrorView extends StatelessWidget {
   const _ErrorView({required this.message, required this.onRetry});
 
   final String message;
-  final Future<void> Function() onRetry;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
