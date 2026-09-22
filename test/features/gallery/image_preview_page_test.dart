@@ -60,6 +60,16 @@ void main() {
     expect(find.text('直链已复制'), findsOneWidget);
   });
 
+  testWidgets('图片加载失败时显示错误提示', (tester) async {
+    // flutter_test 的 mock HttpClient 对所有请求返回 400，网络图必然走失败分支。
+    await tester.pumpWidget(
+      wrap(const ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 200)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('图片无法预览'), findsOneWidget);
+  });
+
   testWidgets('点下载这张回调一次且参数为该 asset', (tester) async {
     final asset = const ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 200);
     final received = <ImageAsset>[];
