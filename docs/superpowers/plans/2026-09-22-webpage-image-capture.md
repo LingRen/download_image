@@ -2986,6 +2986,23 @@ void main() {
     await writer.close();
   });
 
+  test('未打开或已关闭时 add 抛可辨认的 StateError', () async {
+    final file = File('${tempDir.path}/lifecycle.bin');
+    final writer = BlobFileWriter(file);
+    expect(
+      () => writer.add(chunk('dl-1', 0, const [1])),
+      throwsA(isA<StateError>()),
+      reason: 'open 之前不接受分块',
+    );
+    await writer.open();
+    await writer.close();
+    expect(
+      () => writer.add(chunk('dl-1', 0, const [1])),
+      throwsA(isA<StateError>()),
+      reason: 'close 之后不接受分块',
+    );
+  });
+
   test('超过 512KB 的大文件分块写入后大小正确', () async {
     final file = File('${tempDir.path}/big.bin');
     final writer = BlobFileWriter(file);
@@ -3038,11 +3055,17 @@ class BlobFileWriter {
   }
 
   Future<void> add(BlobChunk chunk) async {
+    // 显式生命周期检查：否则 _raf! 会抛 `Null check operator used on a null value`，
+    // 调用方（Task 14 的接收器）拿到的是一个认不出来的 TypeError。
+    final raf = _raf;
+    if (raf == null) {
+      throw StateError('writer 未打开或已关闭，不能接收分块（seq=${chunk.seq}）');
+    }
     if (chunk.seq != _expectedSeq) {
-      throw StateError('分块乱序：期望 ${_expectedSeq}，收到 ${chunk.seq}');
+      throw StateError('分块乱序：期望 $_expectedSeq，收到 ${chunk.seq}');
     }
     final bytes = base64Decode(chunk.data);
-    await _raf!.writeFrom(bytes);
+    await raf.writeFrom(bytes);
     _receivedBytes += bytes.length;
     _expectedSeq++;
     if (chunk.last) _complete = true;
@@ -3067,6 +3090,11 @@ Expected: `All tests passed!`
 git add lib/features/download/blob_file_writer.dart test/features/download/blob_file_writer_test.dart
 git commit -m "feat(download): blob 分块边收边写临时文件"
 ```
+
+**留给 Task 14 的三条（本任务不实现）：**
+1. `isComplete` 只表示「收到 last」，协议里没有总长度字段，**本类无法自检截断**。兜底放在 Task 14：`fetchAsBase64` 的 `call` 返回值带 `length`，收完后拿它与 `writer.receivedBytes` 比对，不一致按失败降级原生下载。
+2. `BlobChunk.error` 非空（JS 侧 fetch 失败）由接收器判失败，不要送进 `writer.add`（否则会被当成 0 字节的正常分块，`last=true` 时还会置成 complete）。
+3. `browser_page.dart` 的 `onBlobChunk` 是 `void Function(BlobChunk)`，回调里不 await —— `add` 抛的 `StateError` 会变成未处理的异步异常。Task 14 的接收器必须在内部 try/catch，别把异常漏给平台通道。
 
 ---
 
