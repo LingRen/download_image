@@ -31,7 +31,7 @@ class DownloadController extends ChangeNotifier {
   int get completed => _completed;
   int get total => _total;
 
-  /// 最近一次下载因为权限被拒。
+  /// 本批（最近一次 downloadAll/retry）中任一项因权限被拒。
   bool get needsPermission => _permissionDenied;
 
   List<String> get failedUrls => List.unmodifiable(_failedUrls);

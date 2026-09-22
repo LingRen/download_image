@@ -58,33 +58,39 @@ class DownloadService implements DownloadExecutor {
     final tempDir = await _tempDirectory();
     final tempFile = File(p.join(tempDir.path, 'imgcat_$fileName'));
 
-    var usedFallback = false;
-    int? bytes;
     try {
-      final file = await blobFetcher.fetchToFile(asset, tempFile);
-      bytes = await file.length();
-    } catch (_) {
-      // 首选失败：降级原生直下。
-      usedFallback = true;
-      final file = await _nativeFetcher.fetchToFile(
-        asset,
-        tempFile,
-        referer: refererProvider?.call(),
-      );
-      bytes = await file.length();
-    }
+      var usedFallback = false;
+      int? bytes;
+      try {
+        final file = await blobFetcher.fetchToFile(asset, tempFile);
+        bytes = await file.length();
+      } on BlobFetchException catch (_) {
+        // 只有 blob 通道自身失败才降级：临时目录不可写等系统级错误原样冒泡，
+        // 否则原生通道写同一路径同样会失败，真实原因会被掩盖。
+        usedFallback = true;
+        final file = await _nativeFetcher.fetchToFile(
+          asset,
+          tempFile,
+          referer: refererProvider?.call(),
+        );
+        bytes = await file.length();
+      }
 
-    final location = await saveTarget.save(
-      tempFile: tempFile,
-      fileName: fileName,
-      mimeType: asset.mimeType,
-    );
-    try {
-      if (await tempFile.exists()) await tempFile.delete();
-    } catch (_) {
-      // 临时文件清理失败不影响结果
+      final location = await saveTarget.save(
+        tempFile: tempFile,
+        fileName: fileName,
+        mimeType: asset.mimeType,
+      );
+      return DownloadOutcome(location: location, usedFallback: usedFallback, bytes: bytes);
+    } finally {
+      // save 读的是 tempFile（桌面端 copy、移动端 Gal 按路径读），必须等它完成后再删；
+      // 失败路径同样要清理，否则批量下载+重试会持续堆积临时文件。
+      try {
+        if (await tempFile.exists()) await tempFile.delete();
+      } catch (_) {
+        // 临时文件清理失败不影响结果
+      }
     }
-    return DownloadOutcome(location: location, usedFallback: usedFallback, bytes: bytes);
   }
 
   @override

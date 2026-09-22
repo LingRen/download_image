@@ -33,6 +33,13 @@ class WebViewBlobFetcher implements BlobChunkSink {
   String? _activeId;
   int _counter = 0;
 
+  /// 串行链：平台通道回传分块是 fire-and-forget（回调不 await），同一时刻
+  /// 可能有多块并发进入 accept。用一条链逐个排队，保证任一时刻只有一次
+  /// `writer.add`，既维持写入顺序，也不会让「上一块还在落盘」被误判成乱序。
+  /// 该链跨轮复用：残留分块靠 `id != _activeId` 丢弃，不需要（也不应该）重置，
+  /// 否则新旧两轮的处理会重新并发。
+  Future<void> _queue = Future<void>.value();
+
   Future<File> fetchToFile(ImageAsset asset, File destination) async {
     if (_writer != null) {
       throw BlobFetchException('已有 blob 下载在进行');
@@ -70,10 +77,18 @@ class WebViewBlobFetcher implements BlobChunkSink {
   /// ① `BlobFileWriter.add` 严格校验 seq 连续，缺块/重块/乱序都抛 StateError；
   /// ② 本方法把它立刻转成 BlobFetchException，立即降级原生而非等超时；
   /// ③ 最后一块始终没到 → `fetchToFile` 的 45s 超时兜底。
-  /// BrowserPage 把 BlobChunk 消息转进来。
+  /// BrowserPage 把 BlobChunk 消息转进来。挂到链尾串行处理，永不向外抛异常。
   @override
-  Future<void> accept(BlobChunk chunk) async {
+  Future<void> accept(BlobChunk chunk) {
+    _queue = _queue.then((_) => _handle(chunk)).catchError((Object _) {
+      // 链尾兜底：_reset/close 的 IO 异常不能打断后续分块，也不能变成未处理异步异常。
+    });
+    return _queue;
+  }
+
+  Future<void> _handle(BlobChunk chunk) async {
     final writer = _writer;
+    // 上一轮的残留分块：writer 已清空或 id 不匹配，直接丢弃，绝不跨轮写入。
     if (writer == null || chunk.id != _activeId) return;
     if (chunk.error != null) {
       final completer = _completer;

@@ -59,6 +59,20 @@ void main() {
     expect(channel.calls.single['url'], 'https://a.com/p.jpg');
   });
 
+  test('两块不 await 直接连发也不会被误判乱序', () async {
+    final channel = _FakeJsChannel();
+    final fetcher = WebViewBlobFetcher(channel);
+    final (result, id) = await start(fetcher, channel);
+
+    // 复刻平台通道的 fire-and-forget：第一块的 Future 被丢弃，紧接着发第二块。
+    unawaited(fetcher.accept(BlobChunk(id: id, seq: 0, data: _b64(<int>[1, 2, 3]), last: false)));
+    unawaited(fetcher.accept(BlobChunk(id: id, seq: 1, data: _b64(<int>[4, 5]), last: true)));
+
+    final file = await result;
+    expect(await file.length(), 5);
+    expect(file.readAsBytesSync(), <int>[1, 2, 3, 4, 5]);
+  });
+
   test('error 非空的分块抛 BlobFetchException 且不残留临时文件', () async {
     final channel = _FakeJsChannel();
     final fetcher = WebViewBlobFetcher(channel);

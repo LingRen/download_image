@@ -35,16 +35,13 @@ class NativeFetcher {
       if (cookieHeader.isNotEmpty) headers['Cookie'] = cookieHeader;
 
       await destination.parent.create(recursive: true);
-      final response = await _dio.download(
+      // validateStatus 已让 >=400 走 DioException，这里不需要再判 statusCode。
+      await _dio.download(
         asset.url,
         destination.path,
         options: Options(headers: headers, followRedirects: true, validateStatus: (code) => code != null && code < 400),
         onReceiveProgress: onProgress,
       );
-      final status = response.statusCode ?? 0;
-      if (status >= 400) {
-        throw NativeFetchException('原生直下返回 HTTP $status');
-      }
       return destination;
     } on DioException catch (e) {
       throw NativeFetchException('原生直下失败：${e.response?.statusCode ?? e.type.name}');
