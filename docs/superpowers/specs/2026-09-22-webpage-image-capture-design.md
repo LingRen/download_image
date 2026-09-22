@@ -104,9 +104,9 @@ class ImageAsset {
 **保存目标**：
 
 - 移动端（Android / iOS）：存系统相册。用 `gal` 包，Android 走 MediaStore（Android 10+ 免存储权限），iOS 需 `NSPhotoLibraryAddUsageDescription`。
-- 桌面端（macOS / Windows）：存下载目录。**macOS 沙盒下需要 `file_selector` 让用户授权一次目录并持久化书签**，这是桌面端唯一的绕点。
+- 桌面端（macOS / Windows）：存下载目录。macOS 沙盒下通过 `com.apple.security.files.downloads.read-write` entitlement 直接写用户下载目录，**无需弹出授权对话框**；Windows 无沙盒限制，直接写 `getDownloadsDirectory()`。用户自定义目录留到二期。
 
-**权限声明**：Android `INTERNET`；iOS `NSPhotoLibraryAddUsageDescription`；macOS 需 `com.apple.security.network.client` 与 `com.apple.security.files.user-selected.read-write`；Windows 无需额外声明。
+**权限声明**：Android `INTERNET`；iOS `NSPhotoLibraryAddUsageDescription`；macOS 需 `com.apple.security.network.client` 与 `com.apple.security.files.downloads.read-write`；Windows 无需额外声明。
 
 ## 8. 界面
 
@@ -117,7 +117,7 @@ class ImageAsset {
 
 **图片面板**：网格列数随宽度自适应（手机 3 列、平板 5 列、桌面 6–8 列）。每格为缩略图 + 角标（尺寸/格式）+ 多选圈。
 
-- 顶部筛选栏：最小边滑块、格式 chip（JPG / PNG / GIF / WebP / SVG）、去重开关、来源筛选（`<img>` 标签 / CSS 背景图 / 动态加载）。
+- 顶部筛选栏：最小边滑块、格式 chip（JPG / PNG / GIF / WebP / SVG）、去重开关、来源筛选（`<img>` / srcset / CSS 背景图 / 动态加载，对应 `ImageSource` 四个枚举值）。
 - 底部操作栏：全选 / 已选 N 张 / 下载。
 - 点击图片进入大图预览（可缩放），底部提供"复制直链"与"下载这张"。
 
@@ -157,7 +157,7 @@ class ImageAsset {
 | `flutter_inappwebview` 的 **Windows 支持为 initial 状态** | 可能导致 Windows 端不可用，动摇四端方案 | **实施第一步先做 Windows 端可行性验证（时间盒 spike）**：验证 WebView 能加载页面、JS 注入能执行、`callHandler` 能回传。若失败，Windows 端单独评估替代方案 |
 | WKWebView 无请求级拦截能力（Apple 已确认无 API） | iOS / macOS 抓不到"加载失败"与"被 CSP 拦截"的请求 | 已通过 JS 主通道规避；设计上不依赖请求级拦截 |
 | 无限滚动 / 有风控的站点 | 自动滚动可能触发风控或永远滚不完 | 40 屏 / 60 秒硬上限；用户可在页面内正常登录后再扫描 |
-| macOS 沙盒目录权限 | 无法直接写下载目录 | 首次下载时用 `file_selector` 授权并持久化书签 |
+| macOS 沙盒目录权限 | 无法直接写下载目录 | 开启 `com.apple.security.files.downloads.read-write` entitlement，直接写下载目录 |
 | Windows 10 可能未预装 WebView2 Runtime | 用户启动即失败 | 启动检测 + 引导安装页 |
 
 ## 12. 验收标准
