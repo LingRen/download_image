@@ -23,6 +23,7 @@ void main() {
     DownloadController? download,
     void Function(ImageAsset asset)? onOpenPreview,
     VoidCallback? onPermissionDenied,
+    VoidCallback? onCollapse,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -34,6 +35,7 @@ void main() {
             download: download ?? fakeDownloadController(),
             onOpenPreview: onOpenPreview ?? (_) {},
             onPermissionDenied: onPermissionDenied,
+            onCollapse: onCollapse,
           ),
         ),
       ),
@@ -234,5 +236,24 @@ void main() {
     await tester.pump();
     expect(opened?.url, 'https://a.com/a.jpg');
     expect(capture.selectedUrls, isEmpty);
+  });
+
+  testWidgets('传 onCollapse 时头部显示折叠按钮并触发回调，不传则不显示', (tester) async {
+    final capture = controllerWith(const [
+      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+    ]);
+    var collapsed = 0;
+
+    await tester.pumpWidget(wrap(capture, onCollapse: () => collapsed++));
+    await tester.pump();
+    expect(find.byKey(const Key('panel-collapse')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('panel-collapse')));
+    await tester.pump();
+    expect(collapsed, 1);
+
+    await tester.pumpWidget(wrap(capture));
+    await tester.pump();
+    expect(find.byKey(const Key('panel-collapse')), findsNothing);
   });
 }

@@ -16,6 +16,17 @@ import 'webview_js_channel.dart';
 /// 页面跳转且列表非空时的确认结果。
 enum PageSwitchDecision { keep, clear }
 
+/// 从「URL → 首次出现的页面 URL」映射里挑出属于 [pageUrl] 的资产。
+///
+/// 抽成顶层函数只为可单测：调用它的 `_afterMainFrameLoad` 需要一个真实的
+/// `InAppWebViewController`，widget 测试构造不出来。
+Set<String> urlsOfPage(Map<String, String> pageOfUrl, String pageUrl) {
+  return <String>{
+    for (final entry in pageOfUrl.entries)
+      if (entry.value == pageUrl) entry.key,
+  };
+}
+
 class BrowserPage extends StatefulWidget {
   const BrowserPage({
     super.key,
@@ -62,9 +73,13 @@ class _BrowserPageState extends State<BrowserPage> {
   String? _currentUrl;
   bool _autoScannedForCurrentUrl = false;
 
-  /// 主框架开始导航前那一批资产的 URL 快照。对话框弹出时新页的图可能已经进来了，
-  /// 「清空」只该清掉这些。
-  Set<String> _urlsBeforeNavigation = const {};
+  /// 每个 URL 首次被抓到时所属的页面 URL（JS 每条 batch 消息都带 pageUrl）。
+  ///
+  /// 切换页面时用户选「清空」只该删**上一个页面**的资产。不能用「导航前的全集」代替：
+  /// ① 上一页其实是 0 张时会退化成 clear()，把对话框等待期间新页推来的图一并抹掉；
+  /// ② 会把用户此前选择「保留」的更早页面的资产一起删掉，违背对话框「只清空该页
+  /// 抓到的图」的承诺。用 putIfAbsent：同一 URL 被多页引用时归属最早的页面。
+  final Map<String, String> _pageOfUrl = <String, String>{};
 
   @override
   void initState() {
@@ -107,21 +122,19 @@ class _BrowserPageState extends State<BrowserPage> {
       // 必须复位，否则新页不会自动扫描、且扫描状态条会停在上一页。
       // keepAssetsForNewPage 是复位扫描态的唯一出口（clear 会连列表一起清掉）。
       _autoScannedForCurrentUrl = false;
+      final previousUrls = urlsOfPage(_pageOfUrl, previousUrl);
       var keepAssets = true;
-      if (capture.rawCount > 0) {
-        keepAssets =
-            await widget.onPageSwitchNeeded?.call(previousUrl, url) != PageSwitchDecision.clear;
+      if (previousUrls.isNotEmpty) {
+        keepAssets = await widget.onPageSwitchNeeded?.call(previousUrl, url) !=
+            PageSwitchDecision.clear;
       }
       if (keepAssets) {
         capture.keepAssetsForNewPage(url);
       } else {
         // 只删上一个页面的资产，别把新页已经推过来的图也清掉（见 Task 11 ⚠️ 段）。
-        if (_urlsBeforeNavigation.isEmpty) {
-          capture.clear();
-        } else {
-          capture.removeUrls(_urlsBeforeNavigation);
-        }
-        _urlsBeforeNavigation = const {};
+        capture.removeUrls(previousUrls);
+        // 归属记录要同步清掉，否则这些 URL 之后被新页重新抓到时会沿用旧页归属。
+        _pageOfUrl.removeWhere((_, pageUrl) => pageUrl == previousUrl);
       }
     }
     if (_autoScannedForCurrentUrl) return;
@@ -233,6 +246,11 @@ class _BrowserPageState extends State<BrowserPage> {
             final shouldWarnLimit = message is ScanProgress &&
                 message.state == ScanState.limit &&
                 !widget.capture.scanReachedLimit;
+            if (message is CaptureBatch && message.pageUrl.isNotEmpty) {
+              for (final asset in message.assets) {
+                _pageOfUrl.putIfAbsent(asset.url, () => message.pageUrl);
+              }
+            }
             widget.capture.accept(message);
             if (shouldWarnLimit) widget.onScanLimitReached?.call();
             return null;
@@ -240,11 +258,6 @@ class _BrowserPageState extends State<BrowserPage> {
         );
       },
       onLoadStart: (controller, url) {
-        // 只在确实是「换页」时快照，刷新同一页不重置（否则对话框来不及弹就先被清）。
-        final target = url?.toString();
-        if (target != null && target != _lastMainFrameUrl) {
-          _urlsBeforeNavigation = widget.capture.rawAssets.map((a) => a.url).toSet();
-        }
         widget.browser.updateLoading(loading: true, progress: 0);
       },
       onLoadStop: (controller, url) async {

@@ -156,7 +156,7 @@ class _HomeShellState extends State<HomeShell> {
               SizedBox(
                 key: const Key('panel-docked'),
                 width: _panelWidth,
-                child: _buildPanel(),
+                child: _buildPanel(showCollapse: true),
               ),
             ],
           ],
@@ -171,7 +171,7 @@ class _HomeShellState extends State<HomeShell> {
                 )
               : null)
           : ListenableBuilder(
-              listenable: _capture,
+              listenable: Listenable.merge([_capture, _download]),
               builder: (context, _) => FloatingActionButton.extended(
                 key: const Key('capture-fab'),
                 onPressed: () => showModalBottomSheet<void>(
@@ -191,45 +191,28 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Widget _buildPanel() => ImagePanel(
+  Widget _buildPanel({bool showCollapse = false}) => ImagePanel(
         capture: _capture,
         download: _download,
         onOpenPreview: _openPreview,
         onPermissionDenied: _showPermissionGuide,
         onDownloadFailed: (failed) =>
             _showSnack('${failed.length} 张下载失败：${_download.errorOf(failed.first.url)}'),
+        // 折叠按钮放在面板自己的头部：叠在浏览器右上角会与地址栏的「重新扫描整页」
+        // 命中区重叠约 44×44dp，宽屏下那个按钮几乎点不到。移动端 BottomSheet 里为 null。
+        onCollapse: showCollapse ? () => setState(() => _panelCollapsed = true) : null,
       );
 
-  /// 折叠按钮叠在浏览器右上角（而不是当 Row 的第一个子节点）：一旦它占据下标 0，
-  /// 下标 0 的类型会在 `Align` 与 `Expanded` 之间跳变，又把 BrowserPage 重建一次。
-  Widget _buildBrowser() {
-    final isWide = MediaQuery.sizeOf(context).width >= kPanelBreakpoint;
-    return Stack(
-      children: [
-        BrowserPage(
-          initialUrl: widget.initialUrl ?? _fallbackUrl,
-          browser: _browser,
-          capture: _capture,
-          jsChannel: _jsChannel,
-          onPageSwitchNeeded: _askPageSwitch,
-          onBlobChunk: (chunk) => unawaited(_download.acceptBlobChunk(chunk)),
-          onScanLimitReached: () => _showSnack('已达扫描上限，可手动继续滚动后再次扫描'),
-          contentOverride: widget.browserContentOverride,
-        ),
-        if (isWide && !_panelCollapsed)
-          Positioned(
-            top: 4,
-            right: 4,
-            child: IconButton(
-              key: const Key('panel-collapse'),
-              tooltip: '折叠图片面板',
-              onPressed: () => setState(() => _panelCollapsed = true),
-              icon: const Icon(Icons.view_sidebar),
-            ),
-          ),
-      ],
-    );
-  }
+  Widget _buildBrowser() => BrowserPage(
+        initialUrl: widget.initialUrl ?? _fallbackUrl,
+        browser: _browser,
+        capture: _capture,
+        jsChannel: _jsChannel,
+        onPageSwitchNeeded: _askPageSwitch,
+        onBlobChunk: (chunk) => unawaited(_download.acceptBlobChunk(chunk)),
+        onScanLimitReached: () => _showSnack('已达扫描上限，可手动继续滚动后再次扫描'),
+        contentOverride: widget.browserContentOverride,
+      );
 
   @override
   void dispose() {

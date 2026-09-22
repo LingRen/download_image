@@ -5224,20 +5224,22 @@ git add lib/app lib/main.dart test/app lib/features/browser/browser_page.dart \
 git commit -m "feat(app): 应用壳、900dp 响应式布局、WebView2 缺失引导"
 ```
 
-**补记（Task 17 实施结果）**：已完成，提交号「见本次提交」（单次提交）。全量 **120 条**用例全绿（基线 110 + 本次新增 10），`flutter analyze` 输出 `No issues found!`。计划 Step 1-10 与上游交办的补充项 A/B/C/D 全部落地，`lib/features/browser/platform/webview2_check.dart` 用计划原文（6.1.5 中 `WebViewEnvironment.getAvailableVersion()` 确为静态方法，无需改实例调用）。
+**补记（Task 17 实施结果）**：已完成，提交号 `78f3def`（实现与用例）+ 本次审查修复提交。全量 **123 条**用例全绿（基线 110 + 实现阶段 10 + 审查修复 3），`flutter analyze` 输出 `No issues found!`。计划 Step 1-10 与上游交办的补充项 A/B/C/D 全部落地，`lib/features/browser/platform/webview2_check.dart` 用计划原文（6.1.5 中 `WebViewEnvironment.getAvailableVersion()` 确为静态方法，无需改实例调用）。
 
-新增用例（10 条）：计划 Step 1 的 5 条（断点常量、≥900dp 分栏、<900dp BottomSheet、折叠按钮、已捕获计数）+ 追加 5 条（`page-loading` 进度条消费 `isLoading/progress`、跨越 900dp 不重建浏览器子树、窄屏面板下载失败 SnackBar、宽屏预览页「下载这张」失败 SnackBar、`test/features/capture/capture_controller_test.dart` 的 `removeUrls`）。第 4 条（宽屏预览页失败 SnackBar）**未放弃**，在 widget 测试里稳定通过（`Image.network` 走 `errorBuilder`，`ScaffoldMessenger` 取根 messenger，失败提示可被 `find.textContaining` 命中）。
+新增用例（10 条）：计划 Step 1 的 5 条（断点常量、≥900dp 分栏、<900dp BottomSheet、折叠按钮、已捕获计数）+ 追加 5 条（`page-loading` 进度条消费 `isLoading/progress`、跨越 900dp 不重建浏览器子树、窄屏面板下载失败 SnackBar、宽屏预览页「下载这张」失败 SnackBar、`test/features/capture/capture_controller_test.dart` 的 `removeUrls`）。第 4 条（宽屏预览页失败 SnackBar）**未放弃**，在 widget 测试里稳定通过（`Image.network` 走 `errorBuilder`，`ScaffoldMessenger` 取根 messenger，失败提示可被 `find.textContaining` 命中）。审查修复阶段再补 3 条：`test/features/browser/browser_page_test.dart`（新建）的 `urlsOfPage` 两条纯单测 + `image_panel_test.dart` 的 `onCollapse` 开关用例。
 
 与计划原文的偏离点：
-1. **折叠按钮改放 `_buildBrowser()` 内的 `Stack` 叠层**（计划原文是当 `Row` 的第一个子节点）。原因：它一旦占下标 0，下标 0 的类型会在 `Align` 与 `Expanded` 之间跳变，又把 `BrowserPage` 重建一次，`_currentUrl` 丢失。改后 `body` 恒为 `Row`、首子节点恒为 `Expanded(child: _buildBrowser())`，图片面板的 `_DragHandle` 与 `SizedBox(key: 'panel-docked')` 仅条件追加。
+1. **折叠按钮放在图片面板的头部**（`ImagePanel.onCollapse`，宽屏由外壳传 `() => setState(() => _panelCollapsed = true)`、移动端 BottomSheet 传 `null`），`_buildBrowser()` 直接返回 `BrowserPage`、不再套 `Stack`。计划原文是当 `Row` 的第一个子节点（会让下标 0 的类型在 `Align` 与 `Expanded` 之间跳变、又重建一次 `BrowserPage`）；中途曾改为叠在 `_buildBrowser()` 的 `Stack` 右上角，但 `Positioned(top: 4, right: 4)` 的 48×48 按钮与地址栏最右「重新扫描整页」（`scan-again`，x∈[W-56,W-8]、y∈[8,56]）重叠约 44×44dp，Stack 后置子节点先命中，宽屏下几乎点不到「重新扫描整页」，故改到面板头部（面板在 `Row` 尾部，不影响 `BrowserPage` 恒在下标 0）。改后 `body` 恒为 `Row`、首子节点恒为 `Expanded(child: _buildBrowser())`，图片面板的 `_DragHandle` 与 `SizedBox(key: 'panel-docked')` 仅条件追加。
 2. **删除死参数 `BrowserPage.onTapCaptureCount`**：字段、构造参数、文档注释全删，`HomeShell` 不再传（浮层「已捕获 N 张」由 `HomeShell` 自己渲染并直接开 BottomSheet）。全仓 `lib` 与 `test` 已无引用。
 3. **新增 `page-loading` 细进度条**：插在 `_AddressBar` 与扫描状态条之间，`LinearProgressIndicator(minHeight: 2)` 消费原先无人消费的 `BrowserController.isLoading/progress`，非加载态返回 `SizedBox.shrink()`。
 4. **下载失败反馈**（原计划只处理「权限被拒」）：`ImagePanel` 与内部 `_ActionBar` 各加可选回调 `onDownloadFailed`，`downloadAll` 之后先判 `needsPermission` 早退，再收集 `errorOf(url) != null` 的项回调；`HomeShell._buildPanel()` 提示文案 `'${failed.length} 张下载失败：${_download.errorOf(failed.first.url)}'`，预览页走新增的 `_downloadFromPreview`，文案 `'下载失败：$error'`。**覆盖范围**：面板「下载」在非权限类失败（镜像 403、写盘失败等）下不再「点了没反应」；`_downloadFromPreview` 开头 `if (_download.isBusy) return;`，避免连点第二次被 `downloadAll` 的 `_busy` 早退后读到上一批 `needsPermission`、重复弹权限引导。
-5. **Step 5 的 C2 修复**已一并落地：`CaptureController.removeUrls`（只加这一个方法）、`BrowserPage._urlsBeforeNavigation` 快照 + clear 分支改 `removeUrls`、`onPageSwitchNeeded` 签名改为 `(String previousUrl, String newUrl)`（用更新前的 `_lastMainFrameUrl`，不读 `capture.pageUrl`）。
-6. `HomeShell` 补了计划漏写的 `import '../core/model/image_asset.dart';`；计划里的 `import '../features/capture/capture_script.dart';` 未使用，未引入。`git add` 按上游交办补齐了 `webview2_check.dart`、`image_panel.dart` 与计划文件本身。
+5. **Step 5 的 C2 修复**已一并落地：`CaptureController.removeUrls`（只加这一个方法）、`onPageSwitchNeeded` 签名改为 `(String previousUrl, String newUrl)`（用更新前的 `_lastMainFrameUrl`，不读 `capture.pageUrl`）。清空的记账方式经审查修复由「导航前的全集快照」升级为**按 URL 记录首次出现的页面归属**（`BrowserPage._pageOfUrl`：在 JS 回调里 `capture.accept(message)` 之前对每条 `CaptureBatch` 用 `putIfAbsent` 记账；抽顶层纯函数 `urlsOfPage(pageOfUrl, pageUrl)` 便于单测），「清空」只删属于 `previousUrl` 的 URL，并同步 `removeWhere` 清掉旧页归属。原「导航前全集」有两个缺陷：① 上一页其实是 0 张时空快照退化成 `capture.clear()`，会把对话框等待期间新页推来的图一并抹掉（恰好反噬 Step 5 要修的 bug）；② A 页保留 → B 页清空时会把更早且被用户明确保留过的 A 页资产一起删掉。判断是否弹对话框也改用 `previousUrls.isNotEmpty`（「上一个页面有没有图」才是前提，用 `capture.rawCount > 0` 会被新页消息污染）。
+6. **窄屏 FAB 的 `ListenableBuilder` 由只监听 `_capture` 改为 `Listenable.merge([_capture, _download])`**：`label` 读 `_download.isBusy/progressLabel`，只监听 capture 时下载进度文案永不刷新。
+7. `HomeShell` 补了计划漏写的 `import '../core/model/image_asset.dart';`；计划里的 `import '../features/capture/capture_script.dart';` 未使用，未引入。`git add` 按上游交办补齐了 `webview2_check.dart`、`image_panel.dart` 与计划文件本身。
 
 仍未处理 / 留待 Task 18：
-- `_buildBrowser()` 的折叠按钮用 `Positioned(top: 4, right: 4)` 叠在浏览器右上角，宽屏下与地址栏最右的「重新扫描整页」（`scan-again`）命中区重叠，可能抢走该按钮的点击——需 Task 18 手动验收时确认，若要避开可改用 `AppBar`/独立工具栏或下调位置。
+- `webview2_check.dart` 的 `catch (_) => true` 会把插件未注册（`MissingPluginException`）也判成「缺 WebView2」：Windows 上用户按引导装完运行时后仍可能打不开，却看不到真实错误。本期不改：Windows 未验证（Task 2 的 spike 结论），不盲改未验证平台的代码，留待 Windows 可用时区分异常类型。
+- `main()` 在 `runApp` 之前 `await isWebView2Missing()` 这个平台查询，且未加超时：Windows 上该调用若挂起会白屏（连引导页都出不来）。同样因 Windows 未验证而不改，留待后续加超时/兜底。
 - 预览页按原分辨率解码（Task 16 已知取舍）、切换页面「保留」后旧页资产仍以当前 `pageUrl` 作 Referer、SVG 缩略图必然破图——均未在本任务处理。
 - 面板 `isBusy` 进度文案、「选中后被筛掉的图不进下载」仍无用例；`removeUrls` 的扫描态复位未单测（依赖 `BrowserPage` 集成路径，留待 Task 18 端到端覆盖）。
 - 四端（Windows/macOS/Linux/Android）真实启动检查未做，Task 18 手动验收阶段执行。

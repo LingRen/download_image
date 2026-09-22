@@ -15,6 +15,7 @@ class ImagePanel extends StatelessWidget {
     required this.onOpenPreview,
     this.onPermissionDenied,
     this.onDownloadFailed,
+    this.onCollapse,
   });
 
   final CaptureController capture;
@@ -27,6 +28,9 @@ class ImagePanel extends StatelessWidget {
   /// 非权限类失败（镜像 403、写盘失败等）时由外层提示。`downloadAll` 从不抛异常，
   /// 不提就等于「点了没反应」。
   final void Function(List<ImageAsset> failed)? onDownloadFailed;
+
+  /// 宽屏下由外壳传入以在面板头部显示折叠按钮；移动端 BottomSheet 里为 null。
+  final VoidCallback? onCollapse;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +46,19 @@ class ImagePanel extends StatelessWidget {
         return Column(
           key: const Key('image-panel'),
           children: [
+            if (onCollapse != null) ...[
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  key: const Key('panel-collapse'),
+                  tooltip: '折叠图片面板',
+                  onPressed: onCollapse,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.view_sidebar),
+                ),
+              ),
+              const Divider(height: 1),
+            ],
             FilterBar(capture: capture),
             const Divider(height: 1),
             Expanded(
