@@ -2478,17 +2478,26 @@ class _BrowserPageState extends State<BrowserPage> {
   }
 
   /// 主框架加载完成：处理「已切换页面」提示，然后自动扫整页。
+  ///
+  /// 已知取舍：导航瞬间旧文档可能还留有排队中的桥消息，它们会把页 URL 短暂写回旧页；
+  /// 下一条新页消息到达即自行纠正。不按 URL 过滤跨页消息——那会误杀 SPA 用
+  /// pushState 改地址后（无主框架加载）发出的消息。
   Future<void> _afterMainFrameLoad(InAppWebViewController controller, String url) async {
     final capture = widget.capture;
-    if (_lastMainFrameUrl == null) {
-      _lastMainFrameUrl = url;
-    } else if (_lastMainFrameUrl != url) {
-      _lastMainFrameUrl = url;
+    final isNewPage = _lastMainFrameUrl != null && _lastMainFrameUrl != url;
+    _lastMainFrameUrl = url;
+    if (isNewPage) {
+      // 必须复位，否则新页不会自动扫描、且扫描状态条会停在上一页。
+      // keepAssetsForNewPage 是复位扫描态的唯一出口（clear 会连列表一起清掉）。
+      _autoScannedForCurrentUrl = false;
+      var keepAssets = true;
       if (capture.rawCount > 0) {
-        final decision = await widget.onPageSwitchNeeded?.call(url) ?? PageSwitchDecision.keep;
-        if (decision == PageSwitchDecision.clear) {
-          capture.clear();
-        }
+        keepAssets = await widget.onPageSwitchNeeded?.call(url) != PageSwitchDecision.clear;
+      }
+      if (keepAssets) {
+        capture.keepAssetsForNewPage(url);
+      } else {
+        capture.clear();
       }
     }
     if (_autoScannedForCurrentUrl) return;
@@ -2630,6 +2639,9 @@ class _BrowserPageState extends State<BrowserPage> {
 把 `onWebViewCreated` 里的 handler 改成下面这版（新增「扫到上限提示用户」的逻辑；`BrowserPage` 的 `onScanLimitReached` 字段已在 Step 3 的构造函数里声明）：
 
 ```dart
+        // 抓取侧两处已知取舍：出现「少了一张图」时先看这里，别当 bug 反复修。
+        // 1) 桥就绪后 flush 队列若抛错，这一批会被静默丢弃（不再重试）；
+        // 2) srcset 候选拿不到宽高，其尺寸筛选与变体去重退化为「先到先得」。
         controller.addJavaScriptHandler(
           handlerName: kBridgeHandlerName,
           callback: (args) {
