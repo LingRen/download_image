@@ -3977,6 +3977,21 @@ git add lib/features/download test/features/download test/support
 git commit -m "feat(download): blob 首选 + 原生降级下载通道与串行下载队列"
 ```
 
+**Task 12 交办三条兜底的落地结果（实施后补记）：**
+
+1. **字节数比对——不做字面实现（已裁定）**。原假设「`fetchAsBase64` 的 `call` 返回值带 `length`」不成立：`JsChannel.call` 签名是 `Future<void>`，`WebViewJsChannel` 用 `evaluateJavascript` 且丢弃返回值、不等待页面 Promise。截断检测改由三条机制覆盖：`BlobFileWriter.add` 严格校验 seq 连续（缺块/重块/乱序抛 `StateError`）→ `accept` 立刻转 `BlobFetchException` 快速降级（不必等超时）→ 末块始终不到达由 45s 超时兜底。残留缺口：JS 侧 `arrayBuffer()` 静默变短却仍置 `last=true` 的情形，seq 与超时都拦不住（要检出需扩展桥协议携带 total），一期接受。
+2. **`BlobChunk.error` 非空不得进 `writer.add`**：按计划实现（先判 `error` 走失败分支）。
+3. **接收器内部 try/catch**：`accept` 不得向外抛异常（`onBlobChunk` 不 await，异常会漏给平台通道）。
+
+**编码期发现的额外修正（已并入 Task 14 提交）：**
+
+- **分块接收串行化（必须）**：`accept` 是 fire-and-forget，而 `BlobFileWriter.add` 的 `_expectedSeq++` 在 `await writeFrom` **之后** → 「上一块还在落盘、下一块已到」会被误判乱序；更糟的是此时 `_reset()` 的 `close()` 会因「async operation pending」抛 `FileSystemException`，`completer` 永不完成。修法：`WebViewBlobFetcher` 内用 `_queue = _queue.then((_) => _handle(chunk))` 串行化，链尾 `catchError` 兜底，链**跨轮复用不重置**（残留分块靠 `writer == null || chunk.id != _activeId` 丢弃，重置会让新旧两轮重新并发）。
+- **失败路径清理临时文件（必须）**：`DownloadService.download` 把「取数 → 保存」包 `try/finally` 删除 `tempFile`，否则相册权限被拒等失败路径会在临时目录持续堆积；`finally` 在 `save` 之后执行，语义不变。
+- **收窄降级条件（必须）**：`catch (_)` → `on BlobFetchException catch (_)`，`writer.open()` 抛的 `FileSystemException`（临时目录不可写）不再被降级掩盖成「原生直下失败」。
+- **新增测试**：`test/features/download/webview_blob_fetcher_test.dart`（5 条：正常序列、error 分块、乱序、无进行中下载时静默返回、连续两块不 await 直接连发不被误判）、`test/features/download/download_service_test.dart`（4 条：blob 成功 / 降级成功 / 两端失败 / 系统级异常不降级）。
+- **`native_fetcher.dart`**：删除 `validateStatus` 之后不可达的 `if (status >= 400) throw`。
+- **`download_controller_test.dart`**：删掉计划顶部那行未使用的 `import '.../download_service.dart'`（否则 `flutter analyze` 报 `unused_import`）。
+
 ---
 
 ## Task 15: 图片面板（网格 + 筛选栏 + 多选 + 操作栏）
