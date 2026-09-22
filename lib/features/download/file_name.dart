@@ -9,11 +9,12 @@ const Map<String, String> _mimeExtensions = {
 };
 
 /// 从 URL 推导保存用的文件名：不信任 URL，路径段与危险字符都会被清洗。
+/// 百分号转义由 `Uri.pathSegments` 负责，这里不再解码，避免二次解码崩溃。
 String buildFileName(String url, {String? mimeType}) {
   final uri = Uri.tryParse(url);
   var name = '';
   if (uri != null && uri.pathSegments.isNotEmpty) {
-    name = Uri.decodeComponent(uri.pathSegments.last);
+    name = uri.pathSegments.last;
   }
   name = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   name = name.replaceAll(RegExp(r'^\.+'), '');

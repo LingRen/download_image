@@ -8,6 +8,12 @@ void main() {
       expect(buildFileName('https://a.com/p/i.jpg?w=300'), 'i.jpg');
     });
 
+    test('pathSegments 已解码，不能再解码一次', () {
+      // 含 % 与非 ASCII 的文件名若被二次解码会抛 ArgumentError。
+      expect(buildFileName('https://a.com/100%25.jpg'), '100_.jpg');
+      expect(buildFileName('https://a.com/%E4%B8%AD%E6%96%87.jpg'), '__.jpg');
+    });
+
     test('路径没有文件名时回退为 image，用 mime 补扩展名', () {
       expect(buildFileName('https://a.com/'), 'image');
       expect(buildFileName('https://a.com/p', mimeType: 'image/png'), 'p.png');

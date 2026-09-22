@@ -52,17 +52,24 @@ class DownloadsSaveTarget implements SaveTarget {
 
   @override
   Future<String> save({required File tempFile, required String fileName, String? mimeType}) async {
-    final dir = await _downloadsDirectory();
-    if (dir == null) {
-      throw SaveException('无法定位系统下载目录');
+    try {
+      final dir = await _downloadsDirectory();
+      if (dir == null) {
+        throw SaveException('无法定位系统下载目录');
+      }
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final resolved = resolveFileName(fileName, (candidate) => File('${dir.path}/$candidate').existsSync());
+      final target = File('${dir.path}/$resolved');
+      await tempFile.copy(target.path);
+      return target.path;
+    } on SaveException {
+      // 已是对外承诺的失败类型，原样透传，不再套一层前缀。
+      rethrow;
+    } catch (e) {
+      throw SaveException('保存到下载目录失败：$e');
     }
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    final resolved = resolveFileName(fileName, (candidate) => File('${dir.path}/$candidate').existsSync());
-    final target = File('${dir.path}/$resolved');
-    await tempFile.copy(target.path);
-    return target.path;
   }
 
   @override
