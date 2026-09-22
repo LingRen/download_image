@@ -1,0 +1,34 @@
+/// mime → 扩展名，只覆盖一期支持的格式。
+const Map<String, String> _mimeExtensions = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+};
+
+/// 从 URL 推导保存用的文件名：不信任 URL，路径段与危险字符都会被清洗。
+String buildFileName(String url, {String? mimeType}) {
+  final uri = Uri.tryParse(url);
+  var name = '';
+  if (uri != null && uri.pathSegments.isNotEmpty) {
+    name = Uri.decodeComponent(uri.pathSegments.last);
+  }
+  name = name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  name = name.replaceAll(RegExp(r'^\.+'), '');
+  if (name.isEmpty) name = 'image';
+  if (!name.contains('.')) {
+    final ext = _mimeExtensions[mimeType?.toLowerCase()];
+    if (ext != null) name = '$name.$ext';
+  }
+  return name;
+}
+
+/// 下载目录里已存在同名文件时使用的备选名：`i.jpg` → `i (1).jpg`。
+String uniqueFileName(String fileName, int index) {
+  if (index <= 0) return fileName;
+  final dot = fileName.lastIndexOf('.');
+  if (dot <= 0) return '$fileName ($index)';
+  return '${fileName.substring(0, dot)} ($index)${fileName.substring(dot)}';
+}
