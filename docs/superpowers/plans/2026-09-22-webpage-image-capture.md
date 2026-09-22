@@ -5496,6 +5496,42 @@ git add integration_test/js_capture_test.dart docs/superpowers/plans/2026-09-22-
 git commit -m "test: JS 抓取与 blob 分块通道端到端测试 + 验收结果"
 ```
 
+**补记（Task 18 实施结果）**：Step 1-2 已完成；Step 3-6 的实测结果见下表（部分因环境限制未验证，已如实标注）。
+
+提交号：`020d4a5`（集成测试首版）+ `c3c1e48`（审查修复：收紧断言、补扫描上限用例、消除 flaky 判据）+ `5c5f189`（补 limit 置位的真实断言、静默窗失败回显、末尾换行）+ `d0f71d6`（占位高按视口动态计算，修 iOS 误判）+ `2103810`（补四个文件末尾换行）。
+
+产物 `integration_test/js_capture_test.dart` 含 **2 条用例**：① 抓取脚本增量推送、三路采集与 blob 分块通道端到端打通；② 扫描达到 maxScreens 上限时提前停下并提交 limit 进度。
+
+验证证据：`flutter test integration_test/js_capture_test.dart -d macos` → `All tests passed!`（连跑 3 次稳定）；**同一命令在 iOS 模拟器（iPhone 17 Pro / iOS 26.0）→ `All tests passed!`**；`flutter analyze` → `No issues found!`；`flutter test test/` → 123 条全绿。
+
+与计划草稿的偏离点：
+1. fixture 从假域名改为**测试内 `HttpServer.bind(loopbackIPv4, 0)` 起真实服务器**（草稿的 `https://fixture.local` 会让所有图 404、`naturalWidth` 为 0、尺寸变 null，尺寸过滤与「1×1 必须被过滤」等断言必然失效）。
+2. 只保留 `initialUrlRequest`、丢弃 `initialData`（macOS 侧优先级为 `initialFile > initialData > initialUrlRequest`，两者都传时 `initialData` 胜出，页面就不再是本机服务器页面）。
+3. 图片用**手写极简 SVG**（`image/svg+xml` + width/height/viewBox）返回，WebKit 从内在尺寸给出精确 `naturalWidth/naturalHeight`，无需手写 PNG；`d-small`/`d-large` 不进资产集合（srcset 只按属性聚合，`d-small` 必然落选）。
+4. 「发现新图 → 增量再推一批」由 **Dart 侧注入新 `<img>`** 触发，而非草稿的 `scrollBy`：程序化滚动事件在该 WebView 不达 `window`，且整轮扫描仅数毫秒，事件监听与 50ms 轮询都会错过窗口。
+5. JS 侧聚合结果用 `JSON.stringify` + `jsonDecode` 读取，不假定平台直接回 `List`。
+6. 新增 **PerformanceObserver 排他证据**：`fetch('/img/probe-g.jpg')` 只发请求、不挂 DOM，断言其 `source == ImageSource.dynamic`（挂进 DOM 的图都会被 DOM 全扫兜住，无法证明 PO 在工作）。MutationObserver 无法与 DOM 全扫相互排他，已在文件头如实注明，不硬造断言。
+7. 新增第 2 条「扫描上限」用例（`maxScreens: 2` → 断言 `limit`/`screen == 2`/`scanReachedLimit`/耗时 < 30s），补上设计文档第 6/9 节「40 屏或 60 秒先到者生效」中此前完全无用例的上限路径；第 1 条不再用 `anyOf(done, limit)` 掩盖退路，直接断言 `done`。
+8. **占位高改为按视口动态计算**（`max(window.innerHeight * 6, 4000)`）并补 `<meta name="viewport">`：写死 4000px 时，iOS 无 viewport meta 的布局视口高达约 2130 CSS px，2 屏就越过 4000px 被误判「已到底」，上限用例在 iOS 上走 `done` 而失败（macOS 不复现）。这是**双端实测发现的真实平台差异**，不是推测。
+9. 扫描态复位断言（Task 17 遗留）不再恒真：先 `accept` 一条 `progress` 造出 running 态并断言 `isScanning == true`，再断言 `keepAssetsForNewPage` 后 `capture.scan == null`；清空分支按 `BrowserPage` 的真实走法拆成「`removeUrls` 后 `scan` 非空」+「`keepAssetsForNewPage` 后 `scan` 为空」两条（`removeUrls` 本身不碰 `_scan`）。
+10. blob 字节除首尾外补**分块边界取样**（`kBlobChunkBytes` 前后各两点，期望值用 `下标 % 251`，因 251 不整除分块大小），避免只测 chunk0/chunk2 时中段等长分块的步进/偏移写错仍全绿；并断言 `seq` 从 0 连续、仅末块 `last`、`mime == image/png`、`error` 全空。
+11. 等待手段改为**内容谓词 + 静默窗口**（`hasAsset('scroll-f.jpg')` + `_waitQuiet`），替换草稿的固定延时与 `batches.length >= 2` 这类「等待条件即断言条件」的自证式判据。
+12. 双审查（规格 + 代码质量）共两轮：第一轮 3 个重要 + 6 个次要问题全部落地；第二轮复核结论为「满足 / 可交付」，剩余仅低优先级可维护性项（文件末尾换行与 `scanReachedLimit` 恒真断言已顺手收掉）。
+
+Step 3-6 实测结果：
+
+| 项 | 结果 | 依据 |
+|---|---|---|
+| Step 3 macOS 手动验收 1-7 | **未执行** | 需人工操作 UI（输入网址、点选、复制直链、查看 `~/Downloads`、访问防盗链图床与无限滚动站点）。App 本身已验证：`flutter run -d macos` 构建成功、进程正常启动、日志无异常（`Using the Impeller rendering backend`），非启动问题。 |
+| Step 4 Android 冒烟 | **阻塞，全部未验证** | ① Android **构建失败**：AGP 9.1.0 下 `flutter_inappwebview_android-1.1.3/android/build.gradle:44,48` 使用 AGP 9 已移除的 `getDefaultProguardFile('proguard-android.txt')` → `EvalIssueException`；② 即便产出 APK，真机安装被 ColorOS「USB 安装身份验证」拦截（`Failure [-99]`，需人工输入 OPPO 账号密码，adb 无法绕过）。临时把 **pub 缓存内**的插件脚本改成 `proguard-android-optimize.txt` 后构建成功（验证后已还原，仓库文件未动）。 |
+| Step 5 iOS 冒烟 | **部分通过** | 安装启动并浏览 **通过**（`flutter run -d 12BB10E1-896F-4749-AAEA-2202016ECDC5` 成功，截图见地址栏 `https://examp…` 与 WebView 渲染出的 Example Domain 页，无白屏、无错误页）。自动扫描出列表 **部分验证**：example.com 本身无图（0 张）；本机 Xcode 不含 Simulator.app（无头模拟器，无触摸注入、无 idb），无法点击地址栏换页；改用集成测试在真实 WKWebView 上验证，**两条用例全通过**，证明抓取脚本 + 桥 + blob 分块通道在 iOS 可用。多选下载进 `ImgCat` 相册、拒绝权限时的引导 **未验证**（均需 UI 点击）。 |
+| Step 6 Windows 冒烟 | **未验证** | 本机无 Windows 机器（与 Task 2 spike 结论一致：Windows 一期可移除）。 |
+| Android `ERR_ABORTED` 误报 | **无法验证** | Android 装不上、iOS 无法触发链接跳转/重定向，该场景在本环境无法复现。代码层面两道守卫（`request.isForMainFrame != true` 直接返回、`WebResourceErrorType.CANCELLED` 直接返回）已就位，但仍属未验证。 |
+
+iOS 构建会生成 `ios/Podfile.lock` 以及 pbxproj/workspace 的 CocoaPods 集成改动，属可再生的构建产物，未纳入提交（`pod install` 会自动重建）。
+
+最终整体审查（全仓跨任务一致性）：**0 项阻塞，可合并**。硬约束未破（`lib/features/capture/`、`lib/core/bridge/` 无 `dart:io` / `flutter_inappwebview` 的 import，仅 JS 字符串里出现 `window.flutter_inappwebview.callHandler`）；JS→协议→聚合器→界面→下载五层的字段名与枚举名一字不差。**发现一条计划未记录的遗漏**：设计文档第 9 节「图片 403 → 列表项标红『下载失败』，支持单张重试」未落地——降级原生下载已实现，但 `image_grid.dart` 无失败态标红、`DownloadController.retry()` 无任何 UI 调用点（仅测试引用）；计划第 77/83 行的文件注释写了「失败标红」「失败重试」，覆盖表却只映射到 Task 14 的降级，属文档与代码不符，待决策是否补。
+
 ---
 
 ## 2. 计划自查
