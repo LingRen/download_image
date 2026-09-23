@@ -206,8 +206,15 @@ const String kCaptureScript = r'''
       }
       scheduleRescan(false);
     });
-    po.observe({ type: 'resource', buffered: true });
-  } catch (e) { /* 老引擎不支持 resource timing 时降级为纯 DOM 扫描 */ }
+    try {
+      po.observe({ type: 'resource', buffered: true });
+    } catch (e) {
+      // Chrome 52~65 只认 entryTypes（单 type + buffered 的形态要 Chrome 66+），
+      // 不退回这一形态的话整个 PO 路径会被外层 catch 静默吞掉。
+      // 拿不到 buffered 回放，但脚本在文档开始注入，后续动态请求仍能覆盖。
+      po.observe({ entryTypes: ['resource'] });
+    }
+  } catch (e) { /* 引擎完全没有 PerformanceObserver 时降级为纯 DOM 扫描 */ }
 
   // 2) MutationObserver：覆盖懒加载与背景图切换
   try {
