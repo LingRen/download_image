@@ -5470,8 +5470,10 @@ Run（需连接设备或启动模拟器）：
 /Users/ling/fvm/versions/3.47.4/bin/flutter run -d android
 ```
 
-- [ ] 输入网址能浏览；自动扫描能出列表；多选下载后图片出现在系统相册的 `ImgCat` 相册里。
-- [ ] 拒绝相册权限时，App 弹出引导对话框，「去设置」能跳到系统设置页。
+- [x] 输入网址能浏览；自动扫描能出列表；多选下载后图片出现在系统相册的 `ImgCat` 相册里。
+- [x] 拒绝相册权限时，App 弹出引导对话框，「去设置」能跳到系统设置页。
+
+注：本机 AGP 已由 9.1.0 降为 8.13.0（见下），且 `adb install` / `pm install` 会被 ColorOS「USB 安装身份验证」拦下（`Failure [-99]`，需人工指纹），实测改用 Flutter 自身的安装路径（`flutter run` / `flutter test` / `flutter install`）。
 
 - [ ] **Step 5: iOS 冒烟（需先在 Xcode 里下载 iOS 模拟器运行时）**
 
@@ -5523,10 +5525,18 @@ Step 3-6 实测结果：
 | 项 | 结果 | 依据 |
 |---|---|---|
 | Step 3 macOS 手动验收 1-7 | **未执行** | 需人工操作 UI（输入网址、点选、复制直链、查看 `~/Downloads`、访问防盗链图床与无限滚动站点）。App 本身已验证：`flutter run -d macos` 构建成功、进程正常启动、日志无异常（`Using the Impeller rendering backend`），非启动问题。 |
-| Step 4 Android 冒烟 | **阻塞，全部未验证** | ① Android **构建失败**：AGP 9.1.0 下 `flutter_inappwebview_android-1.1.3/android/build.gradle:44,48` 使用 AGP 9 已移除的 `getDefaultProguardFile('proguard-android.txt')` → `EvalIssueException`；② 即便产出 APK，真机安装被 ColorOS「USB 安装身份验证」拦截（`Failure [-99]`，需人工输入 OPPO 账号密码，adb 无法绕过）。临时把 **pub 缓存内**的插件脚本改成 `proguard-android-optimize.txt` 后构建成功（验证后已还原，仓库文件未动）。 |
+| Step 4 Android 冒烟 | **通过（真机 OPPO R9s Plus / ColorOS / Android 7.1 / API 25，adb `cb2e5863`）** | ① **构建阻塞已解决**：`android/settings.gradle.kts` 的 AGP 由 9.1.0 降为 **8.13.0**（`flutter_inappwebview_android-1.1.3/android/build.gradle:44,48` 用了 AGP 9 已移除的 `getDefaultProguardFile('proguard-android.txt')`）。② **安装**：`adb install` / `pm install` 均被 ColorOS「USB 安装身份验证」拦下（`Failure [-99]`，需人工指纹，adb 无法绕过），实测 Flutter 自身的安装路径可过。③ **浏览 通过**：`https://example.com` 渲染正常；服务端不可达时错误页（`net:ERR_CONNECTION_REFUSED` + 重试按钮）正常。④ **自动扫描 通过**：本机 fixture 页稳定「已捕获 5 张」，1×1 与 32×32 被尺寸过滤挡掉，与页面实际可下载图数一致。⑤ **多选下载 → 相册 通过**：`/sdcard/Pictures/ImgCat/` 下 5 批文件、每批 5 张，同名冲突自增命名正确。⑥ **拒绝权限引导 通过**：用 `appops set … WRITE_EXTERNAL_STORAGE deny` 复现拒绝（`pm revoke` 会杀进程、且系统会自动弹授权框秒过，不可用），点下载弹出「没有相册写入权限」引导对话框，点「去设置」跳到 `com.android.settings/.applications.InstalledAppDetails` 的 `download_image` 应用信息页。⑦ **集成测试真机 2 条用例全通过**（修复下述平台缺陷后）。 |
 | Step 5 iOS 冒烟 | **部分通过** | 安装启动并浏览 **通过**（`flutter run -d 12BB10E1-896F-4749-AAEA-2202016ECDC5` 成功，截图见地址栏 `https://examp…` 与 WebView 渲染出的 Example Domain 页，无白屏、无错误页）。自动扫描出列表 **部分验证**：example.com 本身无图（0 张）；本机 Xcode 不含 Simulator.app（无头模拟器，无触摸注入、无 idb），无法点击地址栏换页；改用集成测试在真实 WKWebView 上验证，**两条用例全通过**，证明抓取脚本 + 桥 + blob 分块通道在 iOS 可用。多选下载进 `ImgCat` 相册、拒绝权限时的引导 **未验证**（均需 UI 点击）。 |
 | Step 6 Windows 冒烟 | **未验证** | 本机无 Windows 机器（与 Task 2 spike 结论一致：Windows 一期可移除）。 |
-| Android `ERR_ABORTED` 误报 | **无法验证** | Android 装不上、iOS 无法触发链接跳转/重定向，该场景在本环境无法复现。代码层面两道守卫（`request.isForMainFrame != true` 直接返回、`WebResourceErrorType.CANCELLED` 直接返回）已就位，但仍属未验证。 |
+| Android `ERR_ABORTED` 误报 | **无法验证** | 该场景需要「主框架之外的资源被取消 / 主框架重定向」这类页面行为，本环境的 fixture 与 example.com 都无法触发，iOS 侧同样无触摸注入。代码层面两道守卫（`request.isForMainFrame != true` 直接返回、`WebResourceErrorType.CANCELLED` 直接返回）已就位，但仍属未验证。 |
+
+**Android 实测暴露的真实平台缺陷（已修）**：真机 WebView 为 **Chrome 62**（`com.google.android.webview 62.0.3202.84`）。`PerformanceObserver` 的 `observe({type: 'resource', buffered: true})` 形态要 Chrome 66+，在 62 上会抛异常，并被 `capture_script.dart` 里包住整个 PO 初始化的外层 `try/catch` 吞掉 → **整个 PerformanceObserver 路径静默失效，只剩 DOM 扫描**；「被 JS 请求过但从不进 DOM」的图（`<link rel=preload>`、canvas/WebGL 贴图等）抓不到。集成测试用例 1 的 PO 排他断言（`fetch('/img/probe-g.jpg')`）因此在真机上失败，用例 2 通过。
+
+修法：`observe` 外再包一层 `try`，失败时回退 `observe({ entryTypes: ['resource'] })`（Chrome 52+ 即支持）。代价是拿不到 `buffered` 回放，但脚本在 `AT_DOCUMENT_START` 注入，后续动态请求仍能覆盖——这正是 PO 那一路的主要价值。修复后真机 **2 条用例全通过**，macOS 基线复跑仍全通过。
+
+**这条缺陷在 macOS 与 iOS 上完全不可见**（两端的 Chromium/WebKit 版本都支持新形态），只有真机实测才暴露；同时它也是「先按设计注释降级、再被测试证伪」的典型——原注释写的是「老引擎不支持 resource timing 时降级为纯 DOM 扫描」，看似合理，实际把一条本可工作的路径一并关掉了。项目 `minSdk=24`（Android 7.0），这类老 WebView 正在支持范围内。
+
+**`360×270` 尺寸徽标异常的结论：非缺陷**。真机网格第 3 项曾观察到 `360×270 · PNG`，而 fixture 的 `var-g.png` 实际为 800×600。用一次性集成测试直接实测（临时文件已删）：页面**横向溢出**时（`document.documentElement.scrollWidth == 800`，视口 360 CSS px），Android WebView 的 `naturalWidth/naturalHeight` 仍是 **800/600**（对照组 100/100 也精确），Dart 侧捕获到的 `asset` 同样是 `w=800 h=600`；而徽标是 `asset.width × asset.height` 的逐字插值（`image_grid.dart:69,101`，全链路无任何缩放、换算或从缩略图回填尺寸的代码）。故徽标不可能渲染出 `360×270`，此前观察判定为旧构建残留或低分辨率截图上 9px 字号的误读。
 
 iOS 构建会生成 `ios/Podfile.lock` 以及 pbxproj/workspace 的 CocoaPods 集成改动，属可再生的构建产物，未纳入提交（`pod install` 会自动重建）。
 
