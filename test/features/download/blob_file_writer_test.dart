@@ -25,7 +25,9 @@ void main() {
     expect(writer.receivedBytes, 3);
     expect(writer.isComplete, isFalse);
 
-    await writer.add(chunk('dl-1', 1, Uint8List.fromList(List.filled(2, 2)), last: true));
+    await writer.add(
+      chunk('dl-1', 1, Uint8List.fromList(List.filled(2, 2)), last: true),
+    );
     await writer.close();
 
     expect(writer.receivedBytes, 5);

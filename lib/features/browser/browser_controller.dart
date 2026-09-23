@@ -33,7 +33,10 @@ class BrowserController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateNavigationState({required bool canGoBack, required bool canGoForward}) {
+  void updateNavigationState({
+    required bool canGoBack,
+    required bool canGoForward,
+  }) {
     if (_canGoBack == canGoBack && _canGoForward == canGoForward) return;
     _canGoBack = canGoBack;
     _canGoForward = canGoForward;
@@ -47,7 +50,9 @@ class BrowserController extends ChangeNotifier {
 
   Future<void> load(Uri url) async {
     setError(null);
-    await _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(url.toString())));
+    await _webViewController?.loadUrl(
+      urlRequest: URLRequest(url: WebUri(url.toString())),
+    );
   }
 
   Future<void> reload() async {

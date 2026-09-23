@@ -16,7 +16,10 @@ String variantKey(String url) {
   final query = uri.query
       .split('&')
       .where((segment) => segment.isNotEmpty)
-      .where((segment) => !_dimensionParams.contains(segment.split('=').first.toLowerCase()))
+      .where(
+        (segment) =>
+            !_dimensionParams.contains(segment.split('=').first.toLowerCase()),
+      )
       .join('&');
   final buffer = StringBuffer()
     ..write(uri.scheme)
@@ -31,11 +34,15 @@ String variantKey(String url) {
   return buffer.toString();
 }
 
-int _pixelArea(ImageAsset asset) => asset.sizeKnown ? asset.width! * asset.height! : -1;
+int _pixelArea(ImageAsset asset) =>
+    asset.sizeKnown ? asset.width! * asset.height! : -1;
 
 /// 两级去重（设计文档第 8 节）。
 /// 一级：URL 完全相同 → 合并。二级：同 variantKey 的尺寸变体 → 只保留像素最大的一个。
-List<ImageAsset> deduplicate(List<ImageAsset> assets, {required bool mergeVariants}) {
+List<ImageAsset> deduplicate(
+  List<ImageAsset> assets, {
+  required bool mergeVariants,
+}) {
   final byUrl = <String, ImageAsset>{};
   for (final asset in assets) {
     final existing = byUrl[asset.url];

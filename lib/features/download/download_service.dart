@@ -41,8 +41,8 @@ class DownloadService implements DownloadExecutor {
     NativeFetcher? nativeFetcher,
     Future<Directory> Function()? tempDirectory,
     this.refererProvider,
-  })  : _nativeFetcher = nativeFetcher ?? NativeFetcher(),
-        _tempDirectory = tempDirectory ?? getTemporaryDirectory;
+  }) : _nativeFetcher = nativeFetcher ?? NativeFetcher(),
+       _tempDirectory = tempDirectory ?? getTemporaryDirectory;
 
   final WebViewBlobFetcher blobFetcher;
   final SaveTarget saveTarget;
@@ -81,7 +81,11 @@ class DownloadService implements DownloadExecutor {
         fileName: fileName,
         mimeType: asset.mimeType,
       );
-      return DownloadOutcome(location: location, usedFallback: usedFallback, bytes: bytes);
+      return DownloadOutcome(
+        location: location,
+        usedFallback: usedFallback,
+        bytes: bytes,
+      );
     } finally {
       // save 读的是 tempFile（桌面端 copy、移动端 Gal 按路径读），必须等它完成后再删；
       // 失败路径同样要清理，否则批量下载+重试会持续堆积临时文件。

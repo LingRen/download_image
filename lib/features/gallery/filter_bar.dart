@@ -51,10 +51,14 @@ class FilterBar extends StatelessWidget {
                           max: 512,
                           divisions: 16,
                           label: '${filter.minSide}px',
-                          onChanged: (value) => capture.setMinSide(value.round()),
+                          onChanged: (value) =>
+                              capture.setMinSide(value.round()),
                         ),
                       ),
-                      Text('${filter.minSide}px', style: Theme.of(context).textTheme.bodySmall),
+                      Text(
+                        '${filter.minSide}px',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                     ],
                   ),
                 ),

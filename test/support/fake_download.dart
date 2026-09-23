@@ -7,11 +7,9 @@ import 'package:download_image/features/download/webview_blob_fetcher.dart';
 
 /// 可控的假下载执行器：按 URL 决定成功或抛错。
 class FakeDownloadExecutor implements DownloadExecutor {
-  FakeDownloadExecutor({
-    Set<String>? failingUrls,
-    Set<String>? permissionUrls,
-  })  : failingUrls = failingUrls ?? <String>{},
-        permissionUrls = permissionUrls ?? <String>{};
+  FakeDownloadExecutor({Set<String>? failingUrls, Set<String>? permissionUrls})
+    : failingUrls = failingUrls ?? <String>{},
+      permissionUrls = permissionUrls ?? <String>{};
 
   final Set<String> failingUrls;
   final Set<String> permissionUrls;
@@ -27,7 +25,11 @@ class FakeDownloadExecutor implements DownloadExecutor {
     if (failingUrls.contains(asset.url)) {
       throw SaveException('镜像 403');
     }
-    return DownloadOutcome(location: '/Downloads/x.jpg', usedFallback: false, bytes: 3);
+    return DownloadOutcome(
+      location: '/Downloads/x.jpg',
+      usedFallback: false,
+      bytes: 3,
+    );
   }
 
   @override

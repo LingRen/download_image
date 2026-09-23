@@ -93,7 +93,9 @@ class WebViewBlobFetcher implements BlobChunkSink {
     if (chunk.error != null) {
       final completer = _completer;
       await _reset();
-      completer?.completeError(BlobFetchException('页面内 fetch 失败：${chunk.error}'));
+      completer?.completeError(
+        BlobFetchException('页面内 fetch 失败：${chunk.error}'),
+      );
       return;
     }
     try {

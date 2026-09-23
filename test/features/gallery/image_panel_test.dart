@@ -12,7 +12,9 @@ void main() {
   CaptureController controllerWith(List<ImageAsset> assets) {
     final controller = CaptureController();
     for (final asset in assets) {
-      controller.accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: [asset]));
+      controller.accept(
+        CaptureBatch(pageUrl: 'https://a.com/p', assets: [asset]),
+      );
     }
     return controller;
   }
@@ -48,10 +50,14 @@ void main() {
   });
 
   testWidgets('渲染每个可见图片的图块', (tester) async {
-    await tester.pumpWidget(wrap(controllerWith(const [
-      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
-      ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
-    ])));
+    await tester.pumpWidget(
+      wrap(
+        controllerWith(const [
+          ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+          ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
+        ]),
+      ),
+    );
     await tester.pump();
 
     expect(find.byKey(const Key('tile-https://a.com/a.jpg')), findsOneWidget);
@@ -86,10 +92,15 @@ void main() {
     ]);
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
-    expect(find.byKey(const Key('tile-https://a.com/small.jpg')), findsOneWidget);
+    expect(
+      find.byKey(const Key('tile-https://a.com/small.jpg')),
+      findsOneWidget,
+    );
 
     // 点击滑块中点（≈ max/2，分度后为 256px），验证 Slider.onChanged 接线。
-    await tester.tapAt(tester.getCenter(find.byKey(const Key('min-side-slider'))));
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('min-side-slider'))),
+    );
     await tester.pump();
     expect(capture.filter.minSide, greaterThan(80));
     expect(find.byKey(const Key('tile-https://a.com/small.jpg')), findsNothing);
@@ -112,8 +123,18 @@ void main() {
 
   testWidgets('来源 chip 可切换', (tester) async {
     final capture = controllerWith(const [
-      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300, source: ImageSource.img),
-      ImageAsset(url: 'https://a.com/bg.jpg', width: 300, height: 300, source: ImageSource.cssBackground),
+      ImageAsset(
+        url: 'https://a.com/a.jpg',
+        width: 300,
+        height: 300,
+        source: ImageSource.img,
+      ),
+      ImageAsset(
+        url: 'https://a.com/bg.jpg',
+        width: 300,
+        height: 300,
+        source: ImageSource.cssBackground,
+      ),
     ]);
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
@@ -133,15 +154,27 @@ void main() {
     ]);
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
-    expect(find.byKey(const Key('tile-https://a.com/i.jpg?w=900')), findsOneWidget);
-    expect(find.byKey(const Key('tile-https://a.com/i.jpg?w=300')), findsNothing);
+    expect(
+      find.byKey(const Key('tile-https://a.com/i.jpg?w=900')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('tile-https://a.com/i.jpg?w=300')),
+      findsNothing,
+    );
 
     // M3 已把开关移到首位：手机宽度下应首屏可见，无需滚动。
-    expect(tester.getTopLeft(find.byKey(const Key('dedupe-switch'))).dx, lessThan(420));
+    expect(
+      tester.getTopLeft(find.byKey(const Key('dedupe-switch'))).dx,
+      lessThan(420),
+    );
     await tester.tap(find.byKey(const Key('dedupe-switch')));
     await tester.pump();
     expect(capture.filter.mergeVariants, isFalse);
-    expect(find.byKey(const Key('tile-https://a.com/i.jpg?w=300')), findsOneWidget);
+    expect(
+      find.byKey(const Key('tile-https://a.com/i.jpg?w=300')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('尺寸未知的图块显示未知角标', (tester) async {
@@ -150,7 +183,10 @@ void main() {
     ]);
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
-    expect(find.byKey(const Key('tile-badge-unknown-https://a.com/unknown.jpg')), findsOneWidget);
+    expect(
+      find.byKey(const Key('tile-badge-unknown-https://a.com/unknown.jpg')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('未选中时下载按钮禁用，选中后按可见顺序下载', (tester) async {
@@ -159,7 +195,9 @@ void main() {
       ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
       ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
     ]);
-    await tester.pumpWidget(wrap(capture, download: fakeDownloadController(executor: executor)));
+    await tester.pumpWidget(
+      wrap(capture, download: fakeDownloadController(executor: executor)),
+    );
     await tester.pump();
 
     FilledButton downloadButton() =>
@@ -195,22 +233,28 @@ void main() {
     expect(capture.selectedUrls, isEmpty);
     expect(find.text('已选 0 张'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(find.byKey(const Key('download-selected'))).onPressed,
+      tester
+          .widget<FilledButton>(find.byKey(const Key('download-selected')))
+          .onPressed,
       isNull,
     );
   });
 
   testWidgets('下载遇权限被拒时回调一次', (tester) async {
-    final executor = FakeDownloadExecutor(permissionUrls: {'https://a.com/a.jpg'});
+    final executor = FakeDownloadExecutor(
+      permissionUrls: {'https://a.com/a.jpg'},
+    );
     var denied = 0;
     final capture = controllerWith(const [
       ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
     ]);
-    await tester.pumpWidget(wrap(
-      capture,
-      download: fakeDownloadController(executor: executor),
-      onPermissionDenied: () => denied++,
-    ));
+    await tester.pumpWidget(
+      wrap(
+        capture,
+        download: fakeDownloadController(executor: executor),
+        onPermissionDenied: () => denied++,
+      ),
+    );
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('select-all')));
@@ -225,7 +269,9 @@ void main() {
     final capture = controllerWith(const [
       ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
     ]);
-    await tester.pumpWidget(wrap(capture, onOpenPreview: (asset) => opened = asset));
+    await tester.pumpWidget(
+      wrap(capture, onOpenPreview: (asset) => opened = asset),
+    );
     await tester.pump();
 
     final preview = find.byKey(const Key('tile-preview-https://a.com/a.jpg'));

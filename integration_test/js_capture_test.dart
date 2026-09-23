@@ -125,8 +125,10 @@ Future<void> _waitQuiet(
       return;
     }
   }
-  fail('增量通道在 ${quiet.inMilliseconds}ms 静默窗口内始终没有稳定下来'
-      '（当前计数 ${counter()}，已等待 ${DateTime.now().difference(since).inMilliseconds}ms）');
+  fail(
+    '增量通道在 ${quiet.inMilliseconds}ms 静默窗口内始终没有稳定下来'
+    '（当前计数 ${counter()}，已等待 ${DateTime.now().difference(since).inMilliseconds}ms）',
+  );
 }
 
 /// fixture 服务器 + WebView + 桥 + 各通道收集器。
@@ -155,9 +157,9 @@ class _Harness {
 
   /// 页面里最终会被聚合成资产的全部 URL。
   Set<String> get expectedUrls => {
-        for (final path in _imageSpec.keys)
-          if (!_excludedPaths.contains(path)) '$origin$path',
-      };
+    for (final path in _imageSpec.keys)
+      if (!_excludedPaths.contains(path)) '$origin$path',
+  };
 
   bool hasAsset(String suffix) =>
       capture.rawAssets.any((asset) => asset.url.endsWith(suffix));
@@ -214,58 +216,61 @@ Future<_Harness> _pumpFixture(
     await server.close(force: true);
   });
 
-  await tester.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: InAppWebView(
-        // 只给 initialUrlRequest：macOS 侧优先级是 initialFile > initialData >
-        // initialUrlRequest，两者都传时 initialData 会赢，页面就不再是本机服务器页面。
-        initialUrlRequest: URLRequest(url: WebUri(fixtureUrl)),
-        initialUserScripts: UnmodifiableListView<UserScript>([
-          UserScript(
-            source: kCaptureScript,
-            injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
-            forMainFrameOnly: false,
-          ),
-        ]),
-        onWebViewCreated: (created) {
-          if (!controllerCompleter.isCompleted) {
-            controllerCompleter.complete(created);
-          }
-          jsChannel.attach(WebViewJsChannel(created));
-          created.addJavaScriptHandler(
-            handlerName: kBridgeHandlerName,
-            callback: (args) {
-              final message =
-                  BridgeMessage.parse(args.isNotEmpty ? args.first : null);
-              switch (message) {
-                case BlobChunk chunk:
-                  blobChunks.add(chunk);
-                case ScanProgress progress:
-                  progresses.add(progress);
-                  capture.accept(progress);
-                  if (!progress.isRunning && !scanTerminal.isCompleted) {
-                    scanTerminal.complete();
-                  }
-                case CaptureBatch batch:
-                  batches.add(batch);
-                  capture.accept(batch);
-                case null:
-                  break;
-              }
-              return null;
-            },
-          );
-        },
-        onLoadStop: (created, url) async {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-          await created.evaluateJavascript(
-            source:
-                'window.__imgcat.scan({"maxScreens": $maxScreens, "timeoutMs": 60000});',
-          );
-        },
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: InAppWebView(
+          // 只给 initialUrlRequest：macOS 侧优先级是 initialFile > initialData >
+          // initialUrlRequest，两者都传时 initialData 会赢，页面就不再是本机服务器页面。
+          initialUrlRequest: URLRequest(url: WebUri(fixtureUrl)),
+          initialUserScripts: UnmodifiableListView<UserScript>([
+            UserScript(
+              source: kCaptureScript,
+              injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+              forMainFrameOnly: false,
+            ),
+          ]),
+          onWebViewCreated: (created) {
+            if (!controllerCompleter.isCompleted) {
+              controllerCompleter.complete(created);
+            }
+            jsChannel.attach(WebViewJsChannel(created));
+            created.addJavaScriptHandler(
+              handlerName: kBridgeHandlerName,
+              callback: (args) {
+                final message = BridgeMessage.parse(
+                  args.isNotEmpty ? args.first : null,
+                );
+                switch (message) {
+                  case BlobChunk chunk:
+                    blobChunks.add(chunk);
+                  case ScanProgress progress:
+                    progresses.add(progress);
+                    capture.accept(progress);
+                    if (!progress.isRunning && !scanTerminal.isCompleted) {
+                      scanTerminal.complete();
+                    }
+                  case CaptureBatch batch:
+                    batches.add(batch);
+                    capture.accept(batch);
+                  case null:
+                    break;
+                }
+                return null;
+              },
+            );
+          },
+          onLoadStop: (created, url) async {
+            await Future<void>.delayed(const Duration(milliseconds: 500));
+            await created.evaluateJavascript(
+              source:
+                  'window.__imgcat.scan({"maxScreens": $maxScreens, "timeoutMs": 60000});',
+            );
+          },
+        ),
       ),
     ),
-  ));
+  );
 
   return _Harness(
     origin: origin,
@@ -286,67 +291,98 @@ void main() {
     final harness = await _pumpFixture(tester, maxScreens: 40);
     final capture = harness.capture;
 
-    await _waitFor(tester, () => harness.scanTerminal.isCompleted,
-        const Duration(seconds: 60));
-    await _waitQuiet(tester, () => harness.batches.length,
-        const Duration(milliseconds: 400));
+    await _waitFor(
+      tester,
+      () => harness.scanTerminal.isCompleted,
+      const Duration(seconds: 60),
+    );
+    await _waitQuiet(
+      tester,
+      () => harness.batches.length,
+      const Duration(milliseconds: 400),
+    );
     final controller = await harness.webViewController;
 
     // ---------- 增量推送：扫描后页面又出现新图，必须再推一批（只含新图） ----------
-    await controller.evaluateJavascript(source: '''
+    await controller.evaluateJavascript(
+      source: '''
       (function () {
         var img = document.createElement('img');
         img.src = '/img/scroll-f.jpg';
         img.width = 260; img.height = 260;
         document.getElementById('late').appendChild(img);
       })();
-    ''');
-    await _waitFor(tester, () => harness.hasAsset('scroll-f.jpg'),
-        const Duration(seconds: 15));
-    await _waitQuiet(tester, () => harness.batches.length,
-        const Duration(milliseconds: 400));
-    expect(harness.batches.last.assets.map((asset) => asset.url).toList(),
-        ['${harness.origin}/img/scroll-f.jpg'],
-        reason: '增量批只包含新发现的图，不能重推全量快照');
-    expect(harness.batches.every((batch) => batch.pageUrl == harness.fixtureUrl),
-        isTrue,
-        reason: '每批增量都带当前页 URL');
+    ''',
+    );
+    await _waitFor(
+      tester,
+      () => harness.hasAsset('scroll-f.jpg'),
+      const Duration(seconds: 15),
+    );
+    await _waitQuiet(
+      tester,
+      () => harness.batches.length,
+      const Duration(milliseconds: 400),
+    );
+    expect(harness.batches.last.assets.map((asset) => asset.url).toList(), [
+      '${harness.origin}/img/scroll-f.jpg',
+    ], reason: '增量批只包含新发现的图，不能重推全量快照');
+    expect(
+      harness.batches.every((batch) => batch.pageUrl == harness.fixtureUrl),
+      isTrue,
+      reason: '每批增量都带当前页 URL',
+    );
 
     // ---------- PerformanceObserver 独有：只发请求、不进 DOM ----------
     // 这张图不会被 `document.images` / CSS 全扫看到，只能由 resource timing 采集到，
     // 因此它出现（且 source == dynamic）是 PO 那一路真的在工作、而不是被 DOM 全扫兜住的证据。
-    await controller.evaluateJavascript(source: '''
+    await controller.evaluateJavascript(
+      source: '''
       fetch('/img/probe-g.jpg').then(function (r) { return r.arrayBuffer(); });
-    ''');
-    await _waitFor(tester, () => harness.hasAsset('probe-g.jpg'),
-        const Duration(seconds: 15));
-    await _waitQuiet(tester, () => harness.batches.length,
-        const Duration(milliseconds: 400));
+    ''',
+    );
+    await _waitFor(
+      tester,
+      () => harness.hasAsset('probe-g.jpg'),
+      const Duration(seconds: 15),
+    );
+    await _waitQuiet(
+      tester,
+      () => harness.batches.length,
+      const Duration(milliseconds: 400),
+    );
 
     // ---------- 扫描进度序列 ----------
     expect(harness.progresses, isNotEmpty);
     expect(harness.progresses.first.state, ScanState.start);
-    expect(harness.progresses.last.state, ScanState.done,
-        reason: '占位高 6 倍视口，40 屏足够到底，必须走 done 而不是 limit');
+    expect(
+      harness.progresses.last.state,
+      ScanState.done,
+      reason: '占位高 6 倍视口，40 屏足够到底，必须走 done 而不是 limit',
+    );
     expect(harness.progresses.last.isRunning, isFalse);
     expect(
-        harness.progresses
-            .every((p) => p.pageUrl == harness.fixtureUrl),
-        isTrue,
-        reason: 'ScanProgress.pageUrl 必须是 fixture 的真实 URL');
+      harness.progresses.every((p) => p.pageUrl == harness.fixtureUrl),
+      isTrue,
+      reason: 'ScanProgress.pageUrl 必须是 fixture 的真实 URL',
+    );
 
     // ---------- Dart 侧 URL 集合 ----------
     final dartUrls = capture.rawAssets.map((asset) => asset.url).toSet();
-    expect(dartUrls, harness.expectedUrls,
-        reason: 'Dart 侧拿到的 URL 集合必须与 fixture 完全一致');
+    expect(
+      dartUrls,
+      harness.expectedUrls,
+      reason: 'Dart 侧拿到的 URL 集合必须与 fixture 完全一致',
+    );
     expect(capture.pageUrl, harness.fixtureUrl);
 
     // ---------- 桥不丢消息：与 JS 侧聚合结果完全相等 ----------
     final jsAssetsRaw = await controller.evaluateJavascript(
       source: 'JSON.stringify(window.__imgcat.assets())',
     );
-    final jsUrls =
-        (jsonDecode(jsAssetsRaw as String) as List).cast<String>().toSet();
+    final jsUrls = (jsonDecode(jsAssetsRaw as String) as List)
+        .cast<String>()
+        .toSet();
     expect(jsUrls, harness.expectedUrls, reason: 'JS 侧聚合集合必须与预期一致');
     expect(jsUrls, dartUrls, reason: '桥不能丢消息');
 
@@ -359,8 +395,11 @@ void main() {
     expect(aJpg.sizeKnown, isTrue);
 
     final probeG = byUrl['${harness.origin}/img/probe-g.jpg']!;
-    expect(probeG.source, ImageSource.dynamic,
-        reason: '不挂 DOM 的图只能由 PerformanceObserver 采集，来源必须是 dynamic');
+    expect(
+      probeG.source,
+      ImageSource.dynamic,
+      reason: '不挂 DOM 的图只能由 PerformanceObserver 采集，来源必须是 dynamic',
+    );
 
     final dLarge = byUrl['${harness.origin}/img/d-large.webp']!;
     expect(dLarge.source, ImageSource.srcset);
@@ -368,10 +407,14 @@ void main() {
     expect(dLarge.height, isNull);
     expect(dLarge.sizeKnown, isFalse, reason: 'srcset 只给宽度，尺寸未知');
 
-    expect(byUrl['${harness.origin}/img/bg-1.png']!.source,
-        ImageSource.cssBackground);
-    expect(byUrl['${harness.origin}/img/bg-2.jpg']!.source,
-        ImageSource.cssBackground);
+    expect(
+      byUrl['${harness.origin}/img/bg-1.png']!.source,
+      ImageSource.cssBackground,
+    );
+    expect(
+      byUrl['${harness.origin}/img/bg-2.jpg']!.source,
+      ImageSource.cssBackground,
+    );
     expect(byUrl['${harness.origin}/img/lazy-e.jpg']!.width, 240);
     expect(byUrl['${harness.origin}/img/lazy-e.jpg']!.height, 240);
 
@@ -380,60 +423,78 @@ void main() {
     expect(cGif.sizeKnown, isTrue, reason: '1×1 gif 必须真的解码出尺寸');
     expect(cGif.width, 1);
     expect(cGif.height, 1);
-    expect(isFilteredOut(cGif, capture.filter), isTrue,
-        reason: '1×1 必须被尺寸滤镜过滤');
-    expect(capture.rawCount, harness.expectedUrls.length,
-        reason: 'rawAssets 不做筛选');
+    expect(
+      isFilteredOut(cGif, capture.filter),
+      isTrue,
+      reason: '1×1 必须被尺寸滤镜过滤',
+    );
+    expect(
+      capture.rawCount,
+      harness.expectedUrls.length,
+      reason: 'rawAssets 不做筛选',
+    );
 
     final visible = capture.visibleAssets;
-    expect(visible.any((asset) => asset.url == cGif.url), isFalse,
-        reason: '1×1 像素必须被过滤');
+    expect(
+      visible.any((asset) => asset.url == cGif.url),
+      isFalse,
+      reason: '1×1 像素必须被过滤',
+    );
     expect(visible.any((asset) => asset.url == aJpg.url), isTrue);
-    expect(visible.where((asset) => asset.url == dLarge.url).length, 1,
-        reason: '尺寸未知的图不参与尺寸过滤，因此它会留在可见列表里');
+    expect(
+      visible.where((asset) => asset.url == dLarge.url).length,
+      1,
+      reason: '尺寸未知的图不参与尺寸过滤，因此它会留在可见列表里',
+    );
 
     // ---------- 扫描态复位（Task 17 遗留）----------
     // 先证明 limit 进度会置位 scanReachedLimit：否则下面断言它为 false 是恒真的。
-    capture.accept(ScanProgress(
-      state: ScanState.limit,
-      pageUrl: harness.fixtureUrl,
-      screen: 40,
-      maxScreens: 40,
-    ));
-    expect(capture.scanReachedLimit, isTrue,
-        reason: 'limit 进度必须置位 scanReachedLimit');
+    capture.accept(
+      ScanProgress(
+        state: ScanState.limit,
+        pageUrl: harness.fixtureUrl,
+        screen: 40,
+        maxScreens: 40,
+      ),
+    );
+    expect(
+      capture.scanReachedLimit,
+      isTrue,
+      reason: 'limit 进度必须置位 scanReachedLimit',
+    );
 
     // 再造出「扫描进行中」的前置状态：否则此刻 _scan 早已是 done，
     // 即便 keepAssetsForNewPage 整段删掉，isScanning 也照样是 false，断言恒真。
-    capture.accept(ScanProgress(
-      state: ScanState.progress,
-      pageUrl: harness.fixtureUrl,
-      screen: 1,
-    ));
-    expect(capture.isScanning, isTrue,
-        reason: '前置状态必须先成立，否则后面的复位断言没有证据力');
+    capture.accept(
+      ScanProgress(
+        state: ScanState.progress,
+        pageUrl: harness.fixtureUrl,
+        screen: 1,
+      ),
+    );
+    expect(capture.isScanning, isTrue, reason: '前置状态必须先成立，否则后面的复位断言没有证据力');
 
     capture.keepAssetsForNewPage('${harness.origin}/other.html');
     expect(capture.scan, isNull, reason: '保留分支必须把 _scan 归零');
     expect(capture.isScanning, isFalse);
     expect(capture.scanReachedLimit, isFalse);
-    expect(capture.rawCount, harness.expectedUrls.length,
-        reason: '保留分支不能丢图');
+    expect(capture.rawCount, harness.expectedUrls.length, reason: '保留分支不能丢图');
 
     // 清空分支：BrowserPage 的真实走法是 removeUrls(旧页 URL) 紧跟
     // keepAssetsForNewPage(新页 URL)（见 lib/features/browser/browser_page.dart），
     // _scan 的复位由后者完成——removeUrls 本身只删 URL，不碰 _scan。
-    capture.accept(ScanProgress(
-      state: ScanState.progress,
-      pageUrl: harness.fixtureUrl,
-      screen: 2,
-    ));
+    capture.accept(
+      ScanProgress(
+        state: ScanState.progress,
+        pageUrl: harness.fixtureUrl,
+        screen: 2,
+      ),
+    );
     expect(capture.isScanning, isTrue);
 
     capture.removeUrls(dartUrls);
     expect(capture.rawCount, 0, reason: '清空分支必须把旧页 URL 删干净');
-    expect(capture.scan, isNotNull,
-        reason: 'removeUrls 只负责删 URL，不负责复位扫描态');
+    expect(capture.scan, isNotNull, reason: 'removeUrls 只负责删 URL，不负责复位扫描态');
 
     capture.keepAssetsForNewPage('${harness.origin}/other.html');
     expect(capture.scan, isNull, reason: '清空后不能把 _scan 留在 running');
@@ -450,7 +511,9 @@ void main() {
     await writer.open();
 
     const totalBytes = 1200000;
-    await controller.evaluateJavascript(source: '''
+    await controller.evaluateJavascript(
+      source:
+          '''
       (function () {
         var bytes = new Uint8Array($totalBytes);
         for (var i = 0; i < bytes.length; i++) { bytes[i] = i % 251; }
@@ -460,18 +523,24 @@ void main() {
           url: window.__imgcatTestBlobUrl, id: 'it-1', chunkSize: $kBlobChunkBytes
         });
       })();
-    ''');
+    ''',
+    );
 
     List<BlobChunk> mine() =>
         harness.blobChunks.where((chunk) => chunk.id == 'it-1').toList();
-    await _waitFor(tester, () => mine().isNotEmpty && mine().last.last,
-        const Duration(seconds: 45));
+    await _waitFor(
+      tester,
+      () => mine().isNotEmpty && mine().last.last,
+      const Duration(seconds: 45),
+    );
 
     final chunks = mine();
     // 分块协议：mime 是图片类型、seq 从 0 连续递增、只有最后一块 last == true。
     expect(chunks.length, (totalBytes / kBlobChunkBytes).ceil());
-    expect(chunks.map((chunk) => chunk.seq).toList(),
-        List<int>.generate(chunks.length, (index) => index));
+    expect(
+      chunks.map((chunk) => chunk.seq).toList(),
+      List<int>.generate(chunks.length, (index) => index),
+    );
     expect(chunks.where((chunk) => chunk.last).length, 1);
     expect(chunks.last.last, isTrue);
     expect(chunks.every((chunk) => chunk.error == null), isTrue);
@@ -503,8 +572,11 @@ void main() {
     final started = DateTime.now();
     final harness = await _pumpFixture(tester, maxScreens: 2);
 
-    await _waitFor(tester, () => harness.scanTerminal.isCompleted,
-        const Duration(seconds: 60));
+    await _waitFor(
+      tester,
+      () => harness.scanTerminal.isCompleted,
+      const Duration(seconds: 60),
+    );
     final elapsed = DateTime.now().difference(started);
 
     expect(harness.progresses.first.state, ScanState.start);
@@ -513,7 +585,10 @@ void main() {
     expect(harness.progresses.last.maxScreens, 2);
     expect(harness.capture.scanReachedLimit, isTrue);
     expect(harness.capture.isScanning, isFalse);
-    expect(elapsed, lessThan(const Duration(seconds: 30)),
-        reason: '2 屏撞上限就该提前收工，不是等满 60s 超时');
+    expect(
+      elapsed,
+      lessThan(const Duration(seconds: 30)),
+      reason: '2 屏撞上限就该提前收工，不是等满 60s 超时',
+    );
   });
 }

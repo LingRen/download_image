@@ -285,14 +285,24 @@ void main() {
   test('removeUrls 只删指定 URL，新页资产与扫描状态不受影响', () {
     final controller = CaptureController();
     controller
-      ..accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: const [
-        ImageAsset(url: 'https://a.com/1.png', width: 300, height: 300),
-      ]))
+      ..accept(
+        CaptureBatch(
+          pageUrl: 'https://a.com/p',
+          assets: const [
+            ImageAsset(url: 'https://a.com/1.png', width: 300, height: 300),
+          ],
+        ),
+      )
       ..toggleSelection('https://a.com/1.png')
       // 新页的图（模拟：对话框弹出时已经抓到了）
-      ..accept(CaptureBatch(pageUrl: 'https://b.com/p', assets: const [
-        ImageAsset(url: 'https://b.com/2.png', width: 300, height: 300),
-      ]))
+      ..accept(
+        CaptureBatch(
+          pageUrl: 'https://b.com/p',
+          assets: const [
+            ImageAsset(url: 'https://b.com/2.png', width: 300, height: 300),
+          ],
+        ),
+      )
       ..removeUrls(const ['https://a.com/1.png']);
 
     expect(controller.rawAssets.map((a) => a.url), ['https://b.com/2.png']);

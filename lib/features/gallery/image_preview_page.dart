@@ -25,7 +25,9 @@ class ImagePreviewPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text('$size${format == null ? '' : ' · ${format.toUpperCase()}'}'),
+        title: Text(
+          '$size${format == null ? '' : ' · ${format.toUpperCase()}'}',
+        ),
       ),
       body: InteractiveViewer(
         minScale: 0.5,
@@ -33,7 +35,9 @@ class ImagePreviewPage extends StatelessWidget {
         child: Center(
           child: Image.network(
             asset.url,
-            headers: pageUrl == null ? null : {'Referer': pageUrl!, 'Accept': 'image/*,*/*;q=0.8'},
+            headers: pageUrl == null
+                ? null
+                : {'Referer': pageUrl!, 'Accept': 'image/*,*/*;q=0.8'},
             errorBuilder: (context, error, stack) => const Text(
               '图片无法预览（可能需要防盗链校验）',
               style: TextStyle(color: Colors.white70),
@@ -52,9 +56,8 @@ class ImagePreviewPage extends StatelessWidget {
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: asset.url));
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('直链已复制')),
-                      );
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(const SnackBar(content: Text('直链已复制')));
                     }
                   },
                   icon: const Icon(Icons.link),

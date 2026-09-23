@@ -17,12 +17,21 @@ void main() {
     test('路径没有文件名时回退为 image，用 mime 补扩展名', () {
       expect(buildFileName('https://a.com/'), 'image');
       expect(buildFileName('https://a.com/p', mimeType: 'image/png'), 'p.png');
-      expect(buildFileName('https://a.com/', mimeType: 'image/svg+xml'), 'image.svg');
+      expect(
+        buildFileName('https://a.com/', mimeType: 'image/svg+xml'),
+        'image.svg',
+      );
     });
 
     test('没有扩展名时用 mime 补', () {
-      expect(buildFileName('https://a.com/photo', mimeType: 'image/webp'), 'photo.webp');
-      expect(buildFileName('https://a.com/photo', mimeType: 'image/jpeg'), 'photo.jpg');
+      expect(
+        buildFileName('https://a.com/photo', mimeType: 'image/webp'),
+        'photo.webp',
+      );
+      expect(
+        buildFileName('https://a.com/photo', mimeType: 'image/jpeg'),
+        'photo.jpg',
+      );
     });
 
     test('危险字符被替换成下划线', () {
@@ -31,7 +40,13 @@ void main() {
     });
 
     test('mime 无法识别时不补扩展名', () {
-      expect(buildFileName('https://a.com/photo', mimeType: 'application/octet-stream'), 'photo');
+      expect(
+        buildFileName(
+          'https://a.com/photo',
+          mimeType: 'application/octet-stream',
+        ),
+        'photo',
+      );
     });
   });
 

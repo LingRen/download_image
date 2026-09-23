@@ -20,7 +20,8 @@ class _FakeJsChannel implements JsChannel {
   }
 }
 
-ImageAsset _asset() => const ImageAsset(url: 'https://a.com/p.jpg', width: 10, height: 10);
+ImageAsset _asset() =>
+    const ImageAsset(url: 'https://a.com/p.jpg', width: 10, height: 10);
 
 String _b64(List<int> bytes) => base64Encode(bytes);
 
@@ -38,7 +39,10 @@ void main() {
   });
 
   /// 起一次下载并等到桥被调用（此时接收器已记好 id），返回待完成的下载 Future 与 id。
-  Future<(Future<File>, String)> start(WebViewBlobFetcher fetcher, _FakeJsChannel channel) async {
+  Future<(Future<File>, String)> start(
+    WebViewBlobFetcher fetcher,
+    _FakeJsChannel channel,
+  ) async {
     final result = fetcher.fetchToFile(_asset(), dest);
     await channel.called.future;
     return (result, channel.calls.single['id'] as String);
@@ -49,8 +53,12 @@ void main() {
     final fetcher = WebViewBlobFetcher(channel);
     final (result, id) = await start(fetcher, channel);
 
-    await fetcher.accept(BlobChunk(id: id, seq: 0, data: _b64(<int>[1, 2, 3]), last: false));
-    await fetcher.accept(BlobChunk(id: id, seq: 1, data: _b64(<int>[4, 5]), last: true));
+    await fetcher.accept(
+      BlobChunk(id: id, seq: 0, data: _b64(<int>[1, 2, 3]), last: false),
+    );
+    await fetcher.accept(
+      BlobChunk(id: id, seq: 1, data: _b64(<int>[4, 5]), last: true),
+    );
 
     final file = await result;
     expect(file.path, dest.path);
@@ -65,8 +73,16 @@ void main() {
     final (result, id) = await start(fetcher, channel);
 
     // 复刻平台通道的 fire-and-forget：第一块的 Future 被丢弃，紧接着发第二块。
-    unawaited(fetcher.accept(BlobChunk(id: id, seq: 0, data: _b64(<int>[1, 2, 3]), last: false)));
-    unawaited(fetcher.accept(BlobChunk(id: id, seq: 1, data: _b64(<int>[4, 5]), last: true)));
+    unawaited(
+      fetcher.accept(
+        BlobChunk(id: id, seq: 0, data: _b64(<int>[1, 2, 3]), last: false),
+      ),
+    );
+    unawaited(
+      fetcher.accept(
+        BlobChunk(id: id, seq: 1, data: _b64(<int>[4, 5]), last: true),
+      ),
+    );
 
     final file = await result;
     expect(await file.length(), 5);
@@ -79,7 +95,9 @@ void main() {
     final (result, id) = await start(fetcher, channel);
     final expectation = expectLater(result, throwsA(isA<BlobFetchException>()));
 
-    await fetcher.accept(BlobChunk(id: id, seq: 0, data: '', last: false, error: 'HTTP 404'));
+    await fetcher.accept(
+      BlobChunk(id: id, seq: 0, data: '', last: false, error: 'HTTP 404'),
+    );
 
     await expectation;
     expect(await dest.exists(), isFalse);
@@ -92,7 +110,9 @@ void main() {
     final expectation = expectLater(result, throwsA(isA<BlobFetchException>()));
 
     // 先给 seq 1，writer.add 会抛 StateError，接收器须立刻转为 BlobFetchException。
-    await fetcher.accept(BlobChunk(id: id, seq: 1, data: _b64(<int>[9]), last: false));
+    await fetcher.accept(
+      BlobChunk(id: id, seq: 1, data: _b64(<int>[9]), last: false),
+    );
 
     await expectation;
     expect(await dest.exists(), isFalse);
@@ -102,7 +122,9 @@ void main() {
     final channel = _FakeJsChannel();
     final fetcher = WebViewBlobFetcher(channel);
 
-    await fetcher.accept(const BlobChunk(id: 'dl-none', seq: 0, data: '', last: true));
+    await fetcher.accept(
+      const BlobChunk(id: 'dl-none', seq: 0, data: '', last: true),
+    );
 
     expect(channel.calls, isEmpty);
   });

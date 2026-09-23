@@ -53,7 +53,9 @@ class CaptureBatch extends BridgeMessage {
       for (final item in rawAssets) {
         if (item is Map) {
           try {
-            final json = item.map((key, value) => MapEntry(key.toString(), value));
+            final json = item.map(
+              (key, value) => MapEntry(key.toString(), value),
+            );
             if (json['url'] is String) assets.add(ImageAsset.fromJson(json));
           } catch (_) {
             // 单条脏数据只跳过该张，不能拖垮整批增量推送。
@@ -61,7 +63,10 @@ class CaptureBatch extends BridgeMessage {
         }
       }
     }
-    return CaptureBatch(pageUrl: map['pageUrl'] as String? ?? '', assets: assets);
+    return CaptureBatch(
+      pageUrl: map['pageUrl'] as String? ?? '',
+      assets: assets,
+    );
   }
 }
 

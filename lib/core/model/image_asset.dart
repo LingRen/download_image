@@ -46,13 +46,13 @@ class ImageAsset {
   }
 
   Map<String, dynamic> toJson() => {
-        'url': url,
-        'mime': mimeType,
-        'w': width,
-        'h': height,
-        'size': byteSize,
-        'source': source.name,
-      };
+    'url': url,
+    'mime': mimeType,
+    'w': width,
+    'h': height,
+    'size': byteSize,
+    'source': source.name,
+  };
 
   /// 同一 URL 的两次抓取结果合并：尺寸取更大者、非空字段补全、来源保留先出现的。
   ImageAsset merge(ImageAsset other) {

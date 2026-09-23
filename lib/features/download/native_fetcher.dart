@@ -39,19 +39,29 @@ class NativeFetcher {
       await _dio.download(
         asset.url,
         destination.path,
-        options: Options(headers: headers, followRedirects: true, validateStatus: (code) => code != null && code < 400),
+        options: Options(
+          headers: headers,
+          followRedirects: true,
+          validateStatus: (code) => code != null && code < 400,
+        ),
         onReceiveProgress: onProgress,
       );
       return destination;
     } on DioException catch (e) {
-      throw NativeFetchException('原生直下失败：${e.response?.statusCode ?? e.type.name}');
+      throw NativeFetchException(
+        '原生直下失败：${e.response?.statusCode ?? e.type.name}',
+      );
     }
   }
 
   Future<String> _cookieHeader(String url) async {
     try {
-      final cookies = await CookieManager.instance().getCookies(url: WebUri(url));
-      return cookies.map((cookie) => '${cookie.name}=${cookie.value}').join('; ');
+      final cookies = await CookieManager.instance().getCookies(
+        url: WebUri(url),
+      );
+      return cookies
+          .map((cookie) => '${cookie.name}=${cookie.value}')
+          .join('; ');
     } catch (_) {
       return '';
     }

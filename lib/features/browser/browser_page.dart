@@ -48,7 +48,7 @@ class BrowserPage extends StatefulWidget {
   /// 检测到主框架跳到了新页面且上一个页面抓到过图时调用，返回用户选择
   /// （第一个参数是切换前的主框架 URL，第二个是新页 URL）。
   final Future<PageSwitchDecision> Function(String previousUrl, String newUrl)?
-      onPageSwitchNeeded;
+  onPageSwitchNeeded;
 
   /// blob 分块交给下载模块处理。
   final void Function(BlobChunk chunk)? onBlobChunk;
@@ -104,7 +104,8 @@ class _BrowserPageState extends State<BrowserPage> {
       await widget.browser.load(Uri.parse(url));
     } on FormatException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -113,7 +114,10 @@ class _BrowserPageState extends State<BrowserPage> {
   /// 已知取舍：导航瞬间旧文档可能还留有排队中的桥消息，它们会把页 URL 短暂写回旧页；
   /// 下一条新页消息到达即自行纠正。不按 URL 过滤跨页消息——那会误杀 SPA 用
   /// pushState 改地址后（无主框架加载）发出的消息。
-  Future<void> _afterMainFrameLoad(InAppWebViewController controller, String url) async {
+  Future<void> _afterMainFrameLoad(
+    InAppWebViewController controller,
+    String url,
+  ) async {
     final capture = widget.capture;
     final previousUrl = _lastMainFrameUrl;
     final isNewPage = previousUrl != null && previousUrl != url;
@@ -125,7 +129,8 @@ class _BrowserPageState extends State<BrowserPage> {
       final previousUrls = urlsOfPage(_pageOfUrl, previousUrl);
       var keepAssets = true;
       if (previousUrls.isNotEmpty) {
-        keepAssets = await widget.onPageSwitchNeeded?.call(previousUrl, url) !=
+        keepAssets =
+            await widget.onPageSwitchNeeded?.call(previousUrl, url) !=
             PageSwitchDecision.clear;
       }
       if (!keepAssets) {
@@ -146,13 +151,16 @@ class _BrowserPageState extends State<BrowserPage> {
   Future<void> _startScan(InAppWebViewController controller) async {
     if (widget.capture.isScanning) return;
     await controller.evaluateJavascript(
-      source: 'window.__imgcat && window.__imgcat.scan('
+      source:
+          'window.__imgcat && window.__imgcat.scan('
           '{"maxScreens": $kMaxScanScreens, "timeoutMs": ${kScanTimeout.inMilliseconds}});',
     );
   }
 
   Future<void> _abortScan(InAppWebViewController controller) async {
-    await controller.evaluateJavascript(source: 'window.__imgcat && window.__imgcat.abort({});');
+    await controller.evaluateJavascript(
+      source: 'window.__imgcat && window.__imgcat.abort({});',
+    );
   }
 
   InAppWebViewController? _controller;
@@ -165,7 +173,8 @@ class _BrowserPageState extends State<BrowserPage> {
           controller: _addressController,
           browser: widget.browser,
           onSubmit: _goToAddressBarValue,
-          onScanAgain: () => _controller == null ? null : _startScan(_controller!),
+          onScanAgain: () =>
+              _controller == null ? null : _startScan(_controller!),
         ),
         ListenableBuilder(
           listenable: widget.browser,
@@ -184,7 +193,9 @@ class _BrowserPageState extends State<BrowserPage> {
             if (scan == null) return const SizedBox.shrink();
             return _ScanStatusBar(
               scan: scan,
-              onAbort: _controller == null ? null : () => _abortScan(_controller!),
+              onAbort: _controller == null
+                  ? null
+                  : () => _abortScan(_controller!),
             );
           },
         ),
@@ -220,7 +231,9 @@ class _BrowserPageState extends State<BrowserPage> {
   Widget _buildWebView() {
     return InAppWebView(
       key: _webViewKey,
-      initialUrlRequest: URLRequest(url: WebUri(_currentUrl ?? widget.initialUrl.toString())),
+      initialUrlRequest: URLRequest(
+        url: WebUri(_currentUrl ?? widget.initialUrl.toString()),
+      ),
       initialUserScripts: UnmodifiableListView<UserScript>([
         UserScript(
           source: kCaptureScript,
@@ -238,13 +251,16 @@ class _BrowserPageState extends State<BrowserPage> {
         controller.addJavaScriptHandler(
           handlerName: kBridgeHandlerName,
           callback: (args) {
-            final message = BridgeMessage.parse(args.isNotEmpty ? args.first : null);
+            final message = BridgeMessage.parse(
+              args.isNotEmpty ? args.first : null,
+            );
             if (message == null) return null;
             if (message is BlobChunk) {
               widget.onBlobChunk?.call(message);
               return null;
             }
-            final shouldWarnLimit = message is ScanProgress &&
+            final shouldWarnLimit =
+                message is ScanProgress &&
                 message.state == ScanState.limit &&
                 !widget.capture.scanReachedLimit;
             if (message is CaptureBatch && message.pageUrl.isNotEmpty) {
@@ -272,13 +288,19 @@ class _BrowserPageState extends State<BrowserPage> {
         try {
           final canBack = await controller.canGoBack();
           final canForward = await controller.canGoForward();
-          widget.browser.updateNavigationState(canGoBack: canBack, canGoForward: canForward);
+          widget.browser.updateNavigationState(
+            canGoBack: canBack,
+            canGoForward: canForward,
+          );
         } catch (_) {
           // 页面正在销毁时忽略
         }
       },
       onProgressChanged: (controller, progress) {
-        widget.browser.updateLoading(loading: progress < 100, progress: progress / 100);
+        widget.browser.updateLoading(
+          loading: progress < 100,
+          progress: progress / 100,
+        );
       },
       onReceivedError: (controller, request, error) {
         if (request.isForMainFrame != true) return;
@@ -291,11 +313,14 @@ class _BrowserPageState extends State<BrowserPage> {
         // 用 _lastMainFrameUrl（最后一次真正加载完成的主框架 URL）而不是失败的目标 URL：
         // 列表里的资产来自那个页面，降级下载拼 Referer 时才对得上。
         _autoScannedForCurrentUrl = false;
-        widget.capture.keepAssetsForNewPage(_lastMainFrameUrl ?? widget.initialUrl.toString());
+        widget.capture.keepAssetsForNewPage(
+          _lastMainFrameUrl ?? widget.initialUrl.toString(),
+        );
         widget.browser.setError('页面加载失败：${error.description}（${error.type}）');
       },
       onReceivedHttpError: (controller, request, response) {
-        if (request.isForMainFrame == true && (response.statusCode ?? 0) >= 400) {
+        if (request.isForMainFrame == true &&
+            (response.statusCode ?? 0) >= 400) {
           widget.browser.setError('页面返回 ${response.statusCode}');
         }
       },
@@ -307,9 +332,8 @@ class _BrowserPageState extends State<BrowserPage> {
           _webViewKey = UniqueKey();
           _autoScannedForCurrentUrl = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('页面渲染进程崩溃，已重建，已抓列表保留')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('页面渲染进程崩溃，已重建，已抓列表保留')));
       },
     );
   }
@@ -418,9 +442,19 @@ class _ScanStatusBar extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           const SizedBox(width: 12),
-          Expanded(child: Text(text, key: const Key('scan-status'), style: Theme.of(context).textTheme.bodySmall)),
+          Expanded(
+            child: Text(
+              text,
+              key: const Key('scan-status'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
           if (scanner.isRunning && onAbort != null)
-            TextButton(key: const Key('scan-abort'), onPressed: onAbort, child: const Text('中断')),
+            TextButton(
+              key: const Key('scan-abort'),
+              onPressed: onAbort,
+              child: const Text('中断'),
+            ),
         ],
       ),
     );
@@ -441,9 +475,17 @@ class _ErrorView extends StatelessWidget {
         children: [
           const Icon(Icons.wifi_off, size: 48),
           const SizedBox(height: 12),
-          Text(message, key: const Key('page-error'), textAlign: TextAlign.center),
+          Text(
+            message,
+            key: const Key('page-error'),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 12),
-          FilledButton(key: const Key('page-retry'), onPressed: onRetry, child: const Text('重试')),
+          FilledButton(
+            key: const Key('page-retry'),
+            onPressed: onRetry,
+            child: const Text('重试'),
+          ),
         ],
       ),
     );

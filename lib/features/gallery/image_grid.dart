@@ -68,7 +68,8 @@ class _ImageTile extends StatelessWidget {
     final format = formatOf(asset);
     final badge = asset.sizeKnown ? '${asset.width}×${asset.height}' : '尺寸未知';
     // 缩略图按显示尺寸解码，避免几百张大图按原分辨率撑爆 ImageCache。
-    final cacheSize = (kTileMaxExtent * MediaQuery.devicePixelRatioOf(context)).round();
+    final cacheSize = (kTileMaxExtent * MediaQuery.devicePixelRatioOf(context))
+        .round();
     return InkWell(
       key: Key('tile-${asset.url}'),
       onTap: onTap,
@@ -79,7 +80,9 @@ class _ImageTile extends StatelessWidget {
           Container(
             decoration: BoxDecoration(
               border: Border.all(
-                color: selected ? Theme.of(context).colorScheme.primary : Colors.black12,
+                color: selected
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.black12,
                 width: selected ? 2 : 1,
               ),
             ),
@@ -88,9 +91,14 @@ class _ImageTile extends StatelessWidget {
               fit: BoxFit.cover,
               cacheWidth: cacheSize,
               cacheHeight: cacheSize,
-              headers: pageUrl == null ? null : {'Referer': pageUrl!, 'Accept': 'image/*,*/*;q=0.8'},
+              headers: pageUrl == null
+                  ? null
+                  : {'Referer': pageUrl!, 'Accept': 'image/*,*/*;q=0.8'},
               errorBuilder: (context, error, stack) => const Center(
-                child: Icon(Icons.broken_image_outlined, key: Key('tile-thumb-error')),
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  key: Key('tile-thumb-error'),
+                ),
               ),
             ),
           ),
@@ -102,7 +110,11 @@ class _ImageTile extends StatelessWidget {
               key: asset.sizeKnown
                   ? Key('tile-badge-${asset.url}')
                   : Key('tile-badge-unknown-${asset.url}'),
-              style: const TextStyle(fontSize: 9, color: Colors.white, backgroundColor: Colors.black54),
+              style: const TextStyle(
+                fontSize: 9,
+                color: Colors.white,
+                backgroundColor: Colors.black54,
+              ),
             ),
           ),
           Positioned(
@@ -115,7 +127,9 @@ class _ImageTile extends StatelessWidget {
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 32, height: 32),
               // 默认 padded 命中区会被撑到 48×48，盖住 tile 中心并抢走点选手势。
-              style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              style: IconButton.styleFrom(
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               icon: Icon(
                 Icons.zoom_in,
                 color: Colors.white.withValues(alpha: 0.9),

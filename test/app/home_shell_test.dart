@@ -40,9 +40,11 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(browserContentOverride: const SizedBox.expand()),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(browserContentOverride: const SizedBox.expand()),
+      ),
+    );
 
     expect(find.byKey(const Key('panel-docked')), findsOneWidget);
     expect(find.byKey(const Key('capture-fab')), findsNothing);
@@ -54,9 +56,11 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(browserContentOverride: const SizedBox.expand()),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(browserContentOverride: const SizedBox.expand()),
+      ),
+    );
 
     expect(find.byKey(const Key('panel-docked')), findsNothing);
     expect(find.byKey(const Key('capture-fab')), findsOneWidget);
@@ -72,9 +76,11 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(browserContentOverride: const SizedBox.expand()),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(browserContentOverride: const SizedBox.expand()),
+      ),
+    );
 
     await tester.tap(find.byKey(const Key('panel-collapse')));
     await tester.pumpAndSettle();
@@ -88,13 +94,23 @@ void main() {
     addTearDown(tester.view.reset);
 
     final capture = CaptureController();
-    capture.accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: const [
-      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
-    ]));
+    capture.accept(
+      CaptureBatch(
+        pageUrl: 'https://a.com/p',
+        assets: const [
+          ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ],
+      ),
+    );
 
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(browserContentOverride: const SizedBox.expand(), capture: capture),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(
+          browserContentOverride: const SizedBox.expand(),
+          capture: capture,
+        ),
+      ),
+    );
 
     expect(find.text('已捕获 1 张'), findsOneWidget);
   });
@@ -105,9 +121,14 @@ void main() {
     addTearDown(tester.view.reset);
 
     final browser = BrowserController();
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(browser: browser, browserContentOverride: const SizedBox.expand()),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(
+          browser: browser,
+          browserContentOverride: const SizedBox.expand(),
+        ),
+      ),
+    );
 
     expect(find.byKey(const Key('page-loading')), findsNothing);
 
@@ -128,9 +149,11 @@ void main() {
     addTearDown(tester.view.reset);
 
     _MountCounter.mounts = 0;
-    await tester.pumpWidget(const MaterialApp(
-      home: HomeShell(browserContentOverride: _MountCounter()),
-    ));
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: HomeShell(browserContentOverride: _MountCounter()),
+      ),
+    );
 
     expect(_MountCounter.mounts, 1);
     expect(find.byKey(const Key('panel-docked')), findsOneWidget);
@@ -148,17 +171,24 @@ void main() {
 
     final executor = FakeDownloadExecutor(failingUrls: {'https://a.com/a.jpg'});
     final capture = CaptureController();
-    capture.accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: const [
-      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
-    ]));
-
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(
-        capture: capture,
-        download: fakeDownloadController(executor: executor),
-        browserContentOverride: const SizedBox.expand(),
+    capture.accept(
+      CaptureBatch(
+        pageUrl: 'https://a.com/p',
+        assets: const [
+          ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ],
       ),
-    ));
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(
+          capture: capture,
+          download: fakeDownloadController(executor: executor),
+          browserContentOverride: const SizedBox.expand(),
+        ),
+      ),
+    );
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('capture-fab')));
@@ -178,17 +208,24 @@ void main() {
 
     final executor = FakeDownloadExecutor(failingUrls: {'https://a.com/a.jpg'});
     final capture = CaptureController();
-    capture.accept(CaptureBatch(pageUrl: 'https://a.com/p', assets: const [
-      ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
-    ]));
-
-    await tester.pumpWidget(MaterialApp(
-      home: HomeShell(
-        capture: capture,
-        download: fakeDownloadController(executor: executor),
-        browserContentOverride: const SizedBox.expand(),
+    capture.accept(
+      CaptureBatch(
+        pageUrl: 'https://a.com/p',
+        assets: const [
+          ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ],
       ),
-    ));
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(
+          capture: capture,
+          download: fakeDownloadController(executor: executor),
+          browserContentOverride: const SizedBox.expand(),
+        ),
+      ),
+    );
     await tester.pump();
 
     await tester.tap(find.byKey(const Key('tile-preview-https://a.com/a.jpg')));

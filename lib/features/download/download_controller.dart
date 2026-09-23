@@ -68,7 +68,8 @@ class DownloadController extends ChangeNotifier {
       } catch (e) {
         _status[asset.url] = DownloadStatus.failed;
         _errors[asset.url] = e is SaveException ? e.message : e.toString();
-        _permissionDenied = _permissionDenied || (e is SaveException && e.needsPermission);
+        _permissionDenied =
+            _permissionDenied || (e is SaveException && e.needsPermission);
         if (!_failedUrls.contains(asset.url)) _failedUrls.add(asset.url);
       }
       _completed++;

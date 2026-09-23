@@ -19,8 +19,12 @@ List<SrcsetCandidate> parseSrcset(String? srcset) {
     final fields = part.split(RegExp(r'\s+'));
     final url = fields.first;
     if (url.isEmpty) continue;
-    results.add(SrcsetCandidate(
-        url, _parseDescriptor(fields.length > 1 ? fields[1] : null)));
+    results.add(
+      SrcsetCandidate(
+        url,
+        _parseDescriptor(fields.length > 1 ? fields[1] : null),
+      ),
+    );
   }
   return results;
 }

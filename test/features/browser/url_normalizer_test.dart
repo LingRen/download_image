@@ -9,7 +9,10 @@ void main() {
 
     test('保留已有 http / https 协议', () {
       expect(normalizeInputUrl('http://example.com/a'), 'http://example.com/a');
-      expect(normalizeInputUrl('https://example.com/a?b=1'), 'https://example.com/a?b=1');
+      expect(
+        normalizeInputUrl('https://example.com/a?b=1'),
+        'https://example.com/a?b=1',
+      );
     });
 
     test('去掉首尾空白', () {
@@ -17,8 +20,14 @@ void main() {
     });
 
     test('非 http(s) 协议抛 FormatException', () {
-      expect(() => normalizeInputUrl('ftp://example.com/a'), throwsFormatException);
-      expect(() => normalizeInputUrl('javascript:alert(1)'), throwsFormatException);
+      expect(
+        () => normalizeInputUrl('ftp://example.com/a'),
+        throwsFormatException,
+      );
+      expect(
+        () => normalizeInputUrl('javascript:alert(1)'),
+        throwsFormatException,
+      );
     });
 
     test('空串或缺少主机名抛 FormatException', () {

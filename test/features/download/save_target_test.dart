@@ -9,15 +9,22 @@ void main() {
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('imgcat_save');
-    downloadsDir = Directory('${tempDir.path}/Downloads')..createSync(recursive: true);
+    downloadsDir = Directory('${tempDir.path}/Downloads')
+      ..createSync(recursive: true);
   });
   tearDown(() => tempDir.deleteSync(recursive: true));
 
   test('下载目录写入：文件落到目标目录且内容一致', () async {
     final temp = File('${tempDir.path}/tmp.jpg')..writeAsBytesSync([1, 2, 3]);
-    final target = DownloadsSaveTarget(downloadsDirectory: () async => downloadsDir);
+    final target = DownloadsSaveTarget(
+      downloadsDirectory: () async => downloadsDir,
+    );
 
-    final savedPath = await target.save(tempFile: temp, fileName: 'pic.jpg', mimeType: 'image/jpeg');
+    final savedPath = await target.save(
+      tempFile: temp,
+      fileName: 'pic.jpg',
+      mimeType: 'image/jpeg',
+    );
 
     expect(savedPath, '${downloadsDir.path}/pic.jpg');
     expect(File(savedPath).readAsBytesSync(), [1, 2, 3]);
@@ -26,7 +33,9 @@ void main() {
   test('重名时自动追加序号，不覆盖已有文件', () async {
     File('${downloadsDir.path}/pic.jpg').writeAsBytesSync([9]);
     final temp = File('${tempDir.path}/tmp.jpg')..writeAsBytesSync([1]);
-    final target = DownloadsSaveTarget(downloadsDirectory: () async => downloadsDir);
+    final target = DownloadsSaveTarget(
+      downloadsDirectory: () async => downloadsDir,
+    );
 
     final savedPath = await target.save(tempFile: temp, fileName: 'pic.jpg');
 
@@ -48,6 +57,9 @@ void main() {
   test('resolveFileName 在无冲突时返回原名', () {
     expect(resolveFileName('i.jpg', (name) => false), 'i.jpg');
     expect(resolveFileName('i.jpg', (name) => name == 'i.jpg'), 'i (1).jpg');
-    expect(resolveFileName('i.jpg', (name) => name != 'i (5).jpg'), 'i (5).jpg');
+    expect(
+      resolveFileName('i.jpg', (name) => name != 'i (5).jpg'),
+      'i (5).jpg',
+    );
   });
 }

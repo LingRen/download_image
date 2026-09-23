@@ -4,7 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('ImageAsset', () {
     test('尺寸齐全时 sizeKnown 为 true，minSide 取较小边', () {
-      const asset = ImageAsset(url: 'https://a.com/x.jpg', width: 300, height: 200);
+      const asset = ImageAsset(
+        url: 'https://a.com/x.jpg',
+        width: 300,
+        height: 200,
+      );
       expect(asset.sizeKnown, isTrue);
       expect(asset.minSide, 200);
     });
@@ -31,7 +35,10 @@ void main() {
       expect(asset.mimeType, 'image/jpeg');
       expect(asset.source, ImageSource.cssBackground);
 
-      final unknown = ImageAsset.fromJson(const {'url': 'https://a.com/y.png', 'source': 'whatever'});
+      final unknown = ImageAsset.fromJson(const {
+        'url': 'https://a.com/y.png',
+        'source': 'whatever',
+      });
       expect(unknown.source, ImageSource.img);
       expect(unknown.width, isNull);
     });
@@ -55,8 +62,19 @@ void main() {
     });
 
     test('merge 保留已知尺寸、较大尺寸与非空字段', () {
-      const a = ImageAsset(url: 'https://a.com/x.jpg', width: 300, height: 300, source: ImageSource.img);
-      const b = ImageAsset(url: 'https://a.com/x.jpg', width: 900, height: 900, mimeType: 'image/jpeg', source: ImageSource.dynamic);
+      const a = ImageAsset(
+        url: 'https://a.com/x.jpg',
+        width: 300,
+        height: 300,
+        source: ImageSource.img,
+      );
+      const b = ImageAsset(
+        url: 'https://a.com/x.jpg',
+        width: 900,
+        height: 900,
+        mimeType: 'image/jpeg',
+        source: ImageSource.dynamic,
+      );
 
       final merged = a.merge(b);
       expect(merged.width, 900);

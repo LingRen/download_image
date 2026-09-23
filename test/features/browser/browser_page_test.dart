@@ -8,11 +8,9 @@ void main() {
   };
 
   test('urlsOfPage 只挑出属于指定页的 URL', () {
-    expect(
-      urlsOfPage(pageOfUrl, 'https://b.com/p'),
-      {'https://b.com/2.png'},
-      reason: 'A 页的资产不会因为 B→C 选清空而被删',
-    );
+    expect(urlsOfPage(pageOfUrl, 'https://b.com/p'), {
+      'https://b.com/2.png',
+    }, reason: 'A 页的资产不会因为 B→C 选清空而被删');
   });
 
   test('页面不在映射里时返回空集', () {

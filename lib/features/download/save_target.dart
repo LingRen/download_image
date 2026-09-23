@@ -18,7 +18,10 @@ class SaveException implements Exception {
 }
 
 /// 在 [exists] 判定下挑一个不冲突的文件名。
-String resolveFileName(String fileName, bool Function(String candidate) exists) {
+String resolveFileName(
+  String fileName,
+  bool Function(String candidate) exists,
+) {
   if (!exists(fileName)) return fileName;
   for (var index = 1; index < 1000; index++) {
     final candidate = uniqueFileName(fileName, index);
@@ -30,7 +33,11 @@ String resolveFileName(String fileName, bool Function(String candidate) exists) 
 /// 保存目标的抽象：这是四端唯一的平台差异点。
 abstract class SaveTarget {
   /// 返回保存后的可读位置描述（桌面是绝对路径，移动端是相册名）。
-  Future<String> save({required File tempFile, required String fileName, String? mimeType});
+  Future<String> save({
+    required File tempFile,
+    required String fileName,
+    String? mimeType,
+  });
 
   /// 引导用户去系统设置（移动端相册权限被拒时）。
   Future<void> openPermissionSettings();
@@ -46,12 +53,16 @@ SaveTarget createSaveTarget() {
 /// macOS 沙盒下依赖 `com.apple.security.files.downloads.read-write` entitlement，无需授权弹窗。
 class DownloadsSaveTarget implements SaveTarget {
   DownloadsSaveTarget({Future<Directory?> Function()? downloadsDirectory})
-      : _downloadsDirectory = downloadsDirectory ?? getDownloadsDirectory;
+    : _downloadsDirectory = downloadsDirectory ?? getDownloadsDirectory;
 
   final Future<Directory?> Function() _downloadsDirectory;
 
   @override
-  Future<String> save({required File tempFile, required String fileName, String? mimeType}) async {
+  Future<String> save({
+    required File tempFile,
+    required String fileName,
+    String? mimeType,
+  }) async {
     try {
       final dir = await _downloadsDirectory();
       if (dir == null) {
@@ -60,7 +71,10 @@ class DownloadsSaveTarget implements SaveTarget {
       if (!await dir.exists()) {
         await dir.create(recursive: true);
       }
-      final resolved = resolveFileName(fileName, (candidate) => File('${dir.path}/$candidate').existsSync());
+      final resolved = resolveFileName(
+        fileName,
+        (candidate) => File('${dir.path}/$candidate').existsSync(),
+      );
       final target = File('${dir.path}/$resolved');
       await tempFile.copy(target.path);
       return target.path;
@@ -85,13 +99,19 @@ class GallerySaveTarget implements SaveTarget {
   final String album;
 
   @override
-  Future<String> save({required File tempFile, required String fileName, String? mimeType}) async {
+  Future<String> save({
+    required File tempFile,
+    required String fileName,
+    String? mimeType,
+  }) async {
     try {
       await Gal.putImage(tempFile.path, album: album);
       return '相册/$album';
     } on GalException catch (e) {
       throw SaveException(
-        e.type == GalExceptionType.accessDenied ? '没有相册写入权限' : '保存到相册失败：${e.type.message}',
+        e.type == GalExceptionType.accessDenied
+            ? '没有相册写入权限'
+            : '保存到相册失败：${e.type.message}',
         needsPermission: e.type == GalExceptionType.accessDenied,
       );
     }

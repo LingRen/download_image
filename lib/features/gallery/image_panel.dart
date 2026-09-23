@@ -97,7 +97,11 @@ class _EmptyHint extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text(text, key: const Key('panel-empty'), textAlign: TextAlign.center),
+        child: Text(
+          text,
+          key: const Key('panel-empty'),
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
@@ -139,7 +143,9 @@ class _ActionBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              download.isBusy ? download.progressLabel : '已选 ${selected.length} 张',
+              download.isBusy
+                  ? download.progressLabel
+                  : '已选 ${selected.length} 张',
               key: const Key('selection-label'),
               style: Theme.of(context).textTheme.bodyMedium,
             ),

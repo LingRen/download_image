@@ -23,7 +23,8 @@ class _StubBlobFetcher extends WebViewBlobFetcher {
   final Future<File> Function(ImageAsset asset, File destination) handler;
 
   @override
-  Future<File> fetchToFile(ImageAsset asset, File destination) => handler(asset, destination);
+  Future<File> fetchToFile(ImageAsset asset, File destination) =>
+      handler(asset, destination);
 }
 
 /// 记录调用次数并可控失败的原生通道替身。
@@ -49,7 +50,8 @@ class _StubNativeFetcher extends NativeFetcher {
   }
 }
 
-ImageAsset _asset() => const ImageAsset(url: 'https://a.com/p.jpg', mimeType: 'image/jpeg');
+ImageAsset _asset() =>
+    const ImageAsset(url: 'https://a.com/p.jpg', mimeType: 'image/jpeg');
 
 void main() {
   late Directory tempDir;
@@ -72,7 +74,9 @@ void main() {
   }) {
     return DownloadService(
       blobFetcher: _StubBlobFetcher(blob),
-      saveTarget: DownloadsSaveTarget(downloadsDirectory: () async => downloadsDir),
+      saveTarget: DownloadsSaveTarget(
+        downloadsDirectory: () async => downloadsDir,
+      ),
       nativeFetcher: nativeFetcher ?? _StubNativeFetcher(),
       tempDirectory: () async => tempDir,
     );
@@ -124,7 +128,9 @@ void main() {
   });
 
   test('两端都失败：抛原生侧异常且临时文件已清理', () async {
-    final native = _StubNativeFetcher(failure: NativeFetchException('原生直下失败：403'));
+    final native = _StubNativeFetcher(
+      failure: NativeFetchException('原生直下失败：403'),
+    );
     final service = build(
       blob: (asset, dest) async {
         await dest.parent.create(recursive: true);
@@ -134,7 +140,10 @@ void main() {
       nativeFetcher: native,
     );
 
-    await expectLater(service.download(_asset()), throwsA(isA<NativeFetchException>()));
+    await expectLater(
+      service.download(_asset()),
+      throwsA(isA<NativeFetchException>()),
+    );
     expect(native.calls.length, 1);
     expect(await tempFile().exists(), isFalse);
   });
@@ -148,7 +157,10 @@ void main() {
       nativeFetcher: native,
     );
 
-    await expectLater(service.download(_asset()), throwsA(isA<FileSystemException>()));
+    await expectLater(
+      service.download(_asset()),
+      throwsA(isA<FileSystemException>()),
+    );
     expect(native.calls, isEmpty);
   });
 }
