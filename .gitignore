@@ -29,5 +29,14 @@
 app.*.symbols
 app.*.map.json
 
+# 签名与密钥（android/key.properties 已由 android/.gitignore 忽略）
+*.jks
+*.keystore
+
+# 打包产物
+/dist/
+*.dmg
+windows/installer/Output/
+
 # Superpowers brainstorming companion
 .superpowers/
