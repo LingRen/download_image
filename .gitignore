@@ -40,3 +40,5 @@ windows/installer/Output/
 
 # Superpowers brainstorming companion
 .superpowers/
+
+.trae/
