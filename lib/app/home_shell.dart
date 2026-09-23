@@ -54,7 +54,8 @@ class _HomeShellState extends State<HomeShell> {
     _capture = widget.capture ?? CaptureController();
     _browser = widget.browser ?? BrowserController();
     final blobFetcher = WebViewBlobFetcher(_jsChannel);
-    _download = widget.download ??
+    _download =
+        widget.download ??
         DownloadController(
           executor: DownloadService(
             blobFetcher: blobFetcher,
@@ -67,13 +68,18 @@ class _HomeShellState extends State<HomeShell> {
 
   /// 两个参数都来自 BrowserPage 传进来的快照：`previousUrl` 是切换前的主框架
   /// URL。不要在这里读 `_capture.pageUrl` —— 新页的抓取消息通常已经把它覆写了。
-  Future<PageSwitchDecision> _askPageSwitch(String previousUrl, String newPageUrl) async {
+  Future<PageSwitchDecision> _askPageSwitch(
+    String previousUrl,
+    String newPageUrl,
+  ) async {
     final decision = await showDialog<PageSwitchDecision>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('页面已切换'),
-        content: Text('已从 $previousUrl 切换到 $newPageUrl。\n是否清空上一个页面抓到的图片？\n'
-            '（只清空该页抓到的图，新页面已抓到的会保留）'),
+        content: Text(
+          '已从 $previousUrl 切换到 $newPageUrl。\n是否清空上一个页面抓到的图片？\n'
+          '（只清空该页抓到的图，新页面已抓到的会保留）',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, PageSwitchDecision.keep),
@@ -90,13 +96,15 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _openPreview(ImageAsset asset) async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => ImagePreviewPage(
-        asset: asset,
-        pageUrl: _capture.pageUrl,
-        onDownload: _downloadFromPreview,
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ImagePreviewPage(
+          asset: asset,
+          pageUrl: _capture.pageUrl,
+          onDownload: _downloadFromPreview,
+        ),
       ),
-    ));
+    );
   }
 
   /// 预览页「下载这张」：`downloadAll` 从不抛异常，失败信息只在 `_errors` 里，
@@ -122,8 +130,14 @@ class _HomeShellState extends State<HomeShell> {
         title: const Text('没有相册写入权限'),
         content: const Text('请在系统设置中允许本应用写入相册，然后回到应用重试。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('稍后')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('去设置')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('稍后'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去设置'),
+          ),
         ],
       ),
     );
@@ -133,7 +147,8 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -150,7 +165,10 @@ class _HomeShellState extends State<HomeShell> {
             if (isWide && !_panelCollapsed) ...[
               _DragHandle(
                 onDrag: (delta) => setState(() {
-                  _panelWidth = (_panelWidth - delta).clamp(kPanelMinWidth, kPanelMaxWidth);
+                  _panelWidth = (_panelWidth - delta).clamp(
+                    kPanelMinWidth,
+                    kPanelMaxWidth,
+                  );
                 }),
               ),
               SizedBox(
@@ -164,12 +182,12 @@ class _HomeShellState extends State<HomeShell> {
       ),
       floatingActionButton: isWide
           ? (_panelCollapsed
-              ? FloatingActionButton(
-                  key: const Key('panel-expand'),
-                  onPressed: () => setState(() => _panelCollapsed = false),
-                  child: const Icon(Icons.photo_library),
-                )
-              : null)
+                ? FloatingActionButton(
+                    key: const Key('panel-expand'),
+                    onPressed: () => setState(() => _panelCollapsed = false),
+                    child: const Icon(Icons.photo_library),
+                  )
+                : null)
           : ListenableBuilder(
               listenable: Listenable.merge([_capture, _download]),
               builder: (context, _) => FloatingActionButton.extended(
@@ -184,7 +202,9 @@ class _HomeShellState extends State<HomeShell> {
                 ),
                 icon: const Icon(Icons.photo_library),
                 label: Text(
-                  _download.isBusy ? _download.progressLabel : '已捕获 ${_capture.visibleAssets.length} 张',
+                  _download.isBusy
+                      ? _download.progressLabel
+                      : '已捕获 ${_capture.visibleAssets.length} 张',
                 ),
               ),
             ),
@@ -192,27 +212,30 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _buildPanel({bool showCollapse = false}) => ImagePanel(
-        capture: _capture,
-        download: _download,
-        onOpenPreview: _openPreview,
-        onPermissionDenied: _showPermissionGuide,
-        onDownloadFailed: (failed) =>
-            _showSnack('${failed.length} 张下载失败：${_download.errorOf(failed.first.url)}'),
-        // 折叠按钮放在面板自己的头部：叠在浏览器右上角会与地址栏的「重新扫描整页」
-        // 命中区重叠约 44×44dp，宽屏下那个按钮几乎点不到。移动端 BottomSheet 里为 null。
-        onCollapse: showCollapse ? () => setState(() => _panelCollapsed = true) : null,
-      );
+    capture: _capture,
+    download: _download,
+    onOpenPreview: _openPreview,
+    onPermissionDenied: _showPermissionGuide,
+    onDownloadFailed: (failed) => _showSnack(
+      '${failed.length} 张下载失败：${_download.errorOf(failed.first.url)}',
+    ),
+    // 折叠按钮放在面板自己的头部：叠在浏览器右上角会与地址栏的「重新扫描整页」
+    // 命中区重叠约 44×44dp，宽屏下那个按钮几乎点不到。移动端 BottomSheet 里为 null。
+    onCollapse: showCollapse
+        ? () => setState(() => _panelCollapsed = true)
+        : null,
+  );
 
   Widget _buildBrowser() => BrowserPage(
-        initialUrl: widget.initialUrl ?? _fallbackUrl,
-        browser: _browser,
-        capture: _capture,
-        jsChannel: _jsChannel,
-        onPageSwitchNeeded: _askPageSwitch,
-        onBlobChunk: (chunk) => unawaited(_download.acceptBlobChunk(chunk)),
-        onScanLimitReached: () => _showSnack('已达扫描上限，可手动继续滚动后再次扫描'),
-        contentOverride: widget.browserContentOverride,
-      );
+    initialUrl: widget.initialUrl ?? _fallbackUrl,
+    browser: _browser,
+    capture: _capture,
+    jsChannel: _jsChannel,
+    onPageSwitchNeeded: _askPageSwitch,
+    onBlobChunk: (chunk) => unawaited(_download.acceptBlobChunk(chunk)),
+    onScanLimitReached: () => _showSnack('已达扫描上限，可手动继续滚动后再次扫描'),
+    contentOverride: widget.browserContentOverride,
+  );
 
   @override
   void dispose() {
