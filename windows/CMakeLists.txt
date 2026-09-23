@@ -32,6 +32,14 @@ set(CMAKE_CXX_FLAGS_PROFILE "${CMAKE_CXX_FLAGS_RELEASE}")
 # Use Unicode for all projects.
 add_definitions(-DUNICODE -D_UNICODE)
 
+# flutter_inappwebview_windows 0.6.0 通过 <winrt/base.h> 间接引入 <experimental/coroutine>。
+# VS 2026（MSVC 14.51）已把该头文件改为 STL1011 硬错误，插件编译直接中断：
+#   error C2338: static assertion failed: 'error STL1011: ...'
+# 下面这个宏是 MSVC 报错信息里给出的官方抑制开关，等上游去掉 C++/WinRT 的
+# 实验性协程依赖后即可删除。必须定义在 add_subdirectory 之前，才能传递给
+# flutter/、runner/ 与 plugins 子目录。
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
