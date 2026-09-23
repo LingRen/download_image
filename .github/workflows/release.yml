@@ -48,10 +48,18 @@ jobs:
       - run: flutter pub get
       - run: flutter build apk --release
 
+      # Flutter 默认产物名是 app-release.apk，改成与 macOS / Windows 一致的命名。
+      - name: 重命名 APK
+        run: |
+          version=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
+          echo "版本号：$version"
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             "build/app/outputs/flutter-apk/download_image-${version}-android.apk"
+
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/download_image-*.apk
           if-no-files-found: error
 
   macos:
