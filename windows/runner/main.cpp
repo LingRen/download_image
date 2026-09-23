@@ -2,6 +2,8 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include <algorithm>
+
 #include "flutter_window.h"
 #include "utils.h"
 
@@ -31,6 +33,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+
+  // 模板默认把窗口放在 (10, 10)，基本等于屏幕左上角：任务栏置顶或高缩放的窄屏上，
+  // 标题栏会被顶部的系统栏压住。这里在 Show() 之前把它挪到工作区居中；窗口比工作区
+  // 还大时先收缩到工作区尺寸，否则居中会让顶部反而超出工作区。
+  RECT work_area;
+  RECT frame;
+  if (SystemParametersInfo(SPI_GETWORKAREA, 0, &work_area, 0) &&
+      GetWindowRect(window.GetHandle(), &frame)) {
+    const int work_width = work_area.right - work_area.left;
+    const int work_height = work_area.bottom - work_area.top;
+    const int width = std::min<int>(frame.right - frame.left, work_width);
+    const int height = std::min<int>(frame.bottom - frame.top, work_height);
+
+    SetWindowPos(window.GetHandle(), nullptr,
+                 work_area.left + (work_width - width) / 2,
+                 work_area.top + (work_height - height) / 2, width, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  }
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {
