@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/model/image_asset.dart';
 
 /// 最小边默认阈值（px），设计文档第 8 节。
@@ -26,6 +28,15 @@ class FilterSettings {
   /// 二级去重开关：同路径尺寸变体只保留最大一张。
   final bool mergeVariants;
   final Set<ImageSource> enabledSources;
+
+  /// 是否等于默认筛选（用于决定要不要显示「重置」）。
+  bool get isDefault {
+    const defaults = FilterSettings();
+    return minSide == defaults.minSide &&
+        mergeVariants == defaults.mergeVariants &&
+        setEquals(enabledFormats, defaults.enabledFormats) &&
+        setEquals(enabledSources, defaults.enabledSources);
+  }
 
   FilterSettings copyWith({
     int? minSide,

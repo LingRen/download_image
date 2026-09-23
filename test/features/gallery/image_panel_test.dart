@@ -26,6 +26,8 @@ void main() {
     void Function(ImageAsset asset)? onOpenPreview,
     VoidCallback? onPermissionDenied,
     VoidCallback? onCollapse,
+    Future<void> Function(List<ImageAsset> assets)? onArchive,
+    bool allowArchive = false,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -38,10 +40,18 @@ void main() {
             onOpenPreview: onOpenPreview ?? (_) {},
             onPermissionDenied: onPermissionDenied,
             onCollapse: onCollapse,
+            onArchive: onArchive,
+            allowArchive: allowArchive,
           ),
         ),
       ),
     );
+  }
+
+  /// 筛选栏默认收起，进控件交互前先展开。
+  Future<void> openFilters(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('filter-toggle')));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('空列表显示扫描提示', (tester) async {
@@ -97,6 +107,7 @@ void main() {
       findsOneWidget,
     );
 
+    await openFilters(tester);
     // 点击滑块中点（≈ max/2，分度后为 256px），验证 Slider.onChanged 接线。
     await tester.tapAt(
       tester.getCenter(find.byKey(const Key('min-side-slider'))),
@@ -115,6 +126,7 @@ void main() {
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
 
+    await openFilters(tester);
     await tester.tap(find.byKey(const Key('format-chip-jpg')));
     await tester.pump();
     expect(capture.filter.enabledFormats, {'png', 'gif', 'webp', 'svg'});
@@ -139,8 +151,7 @@ void main() {
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
 
-    await tester.ensureVisible(find.byKey(const Key('source-chip-img')));
-    await tester.pump();
+    await openFilters(tester);
     await tester.tap(find.byKey(const Key('source-chip-img')));
     await tester.pump();
     expect(find.byKey(const Key('tile-https://a.com/a.jpg')), findsNothing);
@@ -163,11 +174,7 @@ void main() {
       findsNothing,
     );
 
-    // M3 已把开关移到首位：手机宽度下应首屏可见，无需滚动。
-    expect(
-      tester.getTopLeft(find.byKey(const Key('dedupe-switch'))).dx,
-      lessThan(420),
-    );
+    await openFilters(tester);
     await tester.tap(find.byKey(const Key('dedupe-switch')));
     await tester.pump();
     expect(capture.filter.mergeVariants, isFalse);
@@ -301,5 +308,152 @@ void main() {
     await tester.pumpWidget(wrap(capture));
     await tester.pump();
     expect(find.byKey(const Key('panel-collapse')), findsNothing);
+  });
+
+  group('筛选栏折叠', () {
+    testWidgets('默认收起只有摘要行，点开才出现筛选控件', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+      ]);
+      await tester.pumpWidget(wrap(capture));
+      await tester.pump();
+
+      expect(find.byKey(const Key('filter-summary')), findsOneWidget);
+      expect(find.textContaining('最小边 64px'), findsOneWidget);
+      expect(find.byKey(const Key('min-side-slider')), findsNothing);
+      expect(find.byKey(const Key('format-chip-jpg')), findsNothing);
+
+      await openFilters(tester);
+      expect(find.byKey(const Key('min-side-slider')), findsOneWidget);
+      expect(find.byKey(const Key('format-chip-jpg')), findsOneWidget);
+      expect(find.byKey(const Key('source-chip-img')), findsOneWidget);
+
+      await openFilters(tester);
+      expect(find.byKey(const Key('min-side-slider')), findsNothing);
+    });
+
+    testWidgets('窄面板展开后不横向滚动也不报溢出', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+      ]);
+      await tester.pumpWidget(wrap(capture, width: 280));
+      await tester.pump();
+
+      await openFilters(tester);
+
+      // 旧实现是单行横向滚动，窄面板下看着像被截断；现在应是 Wrap 换行，
+      // 最多允许筛选区内部纵向滚动。
+      final horizontalScrollables = tester
+          .widgetList<Scrollable>(find.byType(Scrollable))
+          .where((s) =>
+              s.axisDirection == AxisDirection.right ||
+              s.axisDirection == AxisDirection.left);
+      expect(horizontalScrollables, isEmpty);
+      expect(tester.takeException(), isNull);
+      for (final format in const ['jpg', 'png', 'gif', 'webp', 'svg']) {
+        expect(find.byKey(Key('format-chip-$format')), findsOneWidget);
+      }
+      expect(find.byKey(const Key('source-chip-dynamic')), findsOneWidget);
+    });
+
+    testWidgets('筛选非默认时出现重置，点后回到默认', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+      ]);
+      await tester.pumpWidget(wrap(capture));
+      await tester.pump();
+
+      expect(find.byKey(const Key('filter-reset')), findsNothing);
+
+      await openFilters(tester);
+      await tester.tap(find.byKey(const Key('format-chip-jpg')));
+      await tester.pump();
+      expect(capture.isFilterDefault, isFalse);
+      expect(find.byKey(const Key('filter-reset')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('filter-reset')));
+      await tester.pump();
+      expect(capture.isFilterDefault, isTrue);
+      expect(find.byKey(const Key('filter-reset')), findsNothing);
+      expect(capture.filter.enabledFormats.length, 5);
+    });
+  });
+
+  group('打包下载', () {
+    testWidgets('allowArchive=false 时不显示打包入口', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+      ]);
+      await tester.pumpWidget(wrap(capture, allowArchive: false));
+      await tester.pump();
+
+      expect(find.byKey(const Key('archive-menu')), findsNothing);
+      expect(find.byKey(const Key('download-selected')), findsOneWidget);
+    });
+
+    testWidgets('打包选中 只交出选中项', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
+      ]);
+      final archived = <String>[];
+      await tester.pumpWidget(
+        wrap(
+          capture,
+          allowArchive: true,
+          onArchive: (assets) async {
+            archived.addAll(assets.map((asset) => asset.url));
+          },
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('tile-https://a.com/a.jpg')));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('archive-menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('打包选中 (1)'));
+      await tester.pumpAndSettle();
+
+      expect(archived, ['https://a.com/a.jpg']);
+    });
+
+    testWidgets('打包全部可见 交出全部可见项；未选中时选中项菜单禁用', (tester) async {
+      final capture = controllerWith(const [
+        ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ImageAsset(url: 'https://a.com/b.png', width: 300, height: 300),
+      ]);
+      final archived = <String>[];
+      await tester.pumpWidget(
+        wrap(
+          capture,
+          allowArchive: true,
+          onArchive: (assets) async {
+            archived.addAll(assets.map((asset) => asset.url));
+          },
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('archive-menu')));
+      await tester.pumpAndSettle();
+
+      final selectedItem = tester.widget<PopupMenuItem>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is PopupMenuItem &&
+              w.child is Text &&
+              (w.child as Text).data?.startsWith('打包选中') == true,
+          description: 'PopupMenuItem 打包选中',
+        ),
+      );
+      expect(selectedItem.enabled, isFalse, reason: '没有选中时不允许打包选中');
+
+      await tester.tap(find.text('打包全部可见 (2)'));
+      await tester.pumpAndSettle();
+
+      expect(archived, ['https://a.com/a.jpg', 'https://a.com/b.png']);
+    });
   });
 }

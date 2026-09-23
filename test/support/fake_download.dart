@@ -48,10 +48,51 @@ class FakeBlobSink implements BlobChunkSink {
   }
 }
 
+/// 可控的假打包器：记录每次打包的 URL 列表。
+class FakeArchiver implements DownloadArchiver {
+  FakeArchiver({this.failAll = false, this.failUrls = const {}});
+
+  final bool failAll;
+  final Set<String> failUrls;
+
+  /// 每次调用打包的 URL 列表（按调用顺序）。
+  final List<List<String>> calls = <List<String>>[];
+
+  @override
+  Future<ArchiveOutcome> downloadArchive(
+    List<ImageAsset> assets, {
+    required String archiveName,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    calls.add(assets.map((asset) => asset.url).toList());
+    if (failAll) {
+      throw SaveException('全部图片下载失败，未生成压缩包');
+    }
+    var failed = 0;
+    for (var index = 0; index < assets.length; index++) {
+      if (failUrls.contains(assets[index].url)) failed++;
+      onProgress?.call(index + 1, assets.length);
+    }
+    if (assets.length - failed == 0) {
+      throw SaveException('全部图片下载失败，未生成压缩包');
+    }
+    return ArchiveOutcome(
+      location: '/Downloads/$archiveName',
+      included: assets.length - failed,
+      failed: failed,
+      bytes: 1024,
+    );
+  }
+}
+
 /// 给 widget 测试用的下载控制器。
-DownloadController fakeDownloadController({FakeDownloadExecutor? executor}) {
+DownloadController fakeDownloadController({
+  FakeDownloadExecutor? executor,
+  FakeArchiver? archiver,
+}) {
   return DownloadController(
     executor: executor ?? FakeDownloadExecutor(),
     blobSink: FakeBlobSink(),
+    archiver: archiver,
   );
 }

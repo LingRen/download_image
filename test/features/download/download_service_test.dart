@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:download_image/core/bridge/js_channel.dart';
 import 'package:download_image/core/model/image_asset.dart';
 import 'package:download_image/features/download/download_service.dart';
@@ -151,7 +153,7 @@ void main() {
   test('系统级异常不触发降级：原样冒泡且不调用原生侧', () async {
     final native = _StubNativeFetcher();
     final service = build(
-      blob: (asset, dest) async {
+      blob: (asset, dest) {
         throw const FileSystemException('临时目录不可写');
       },
       nativeFetcher: native,
@@ -162,5 +164,114 @@ void main() {
       throwsA(isA<FileSystemException>()),
     );
     expect(native.calls, isEmpty);
+  });
+
+  group('downloadArchive', () {
+    test('成功：包内重名自动去重、存进下载目录、工作目录已清理', () async {
+      final service = build(
+        blob: (asset, dest) async {
+          await dest.parent.create(recursive: true);
+          await dest.writeAsBytes(utf8.encode(asset.url));
+          return dest;
+        },
+      );
+      const assets = [
+        ImageAsset(url: 'https://a.com/img/p.jpg'),
+        ImageAsset(url: 'https://b.com/img/p.jpg'),
+      ];
+      final progress = <String>[];
+
+      final outcome = await service.downloadArchive(
+        assets,
+        archiveName: 'imgcat-x.zip',
+        onProgress: (done, total) => progress.add('$done/$total'),
+      );
+
+      expect(outcome.included, 2);
+      expect(outcome.failed, 0);
+      expect(progress, ['1/2', '2/2']);
+
+      final zip = File('${downloadsDir.path}/imgcat-x.zip');
+      expect(outcome.location, zip.path);
+      expect(await zip.exists(), isTrue);
+
+      final archive = ZipDecoder().decodeBytes(await zip.readAsBytes());
+      final names = archive.files.map((file) => file.name).toList()..sort();
+      expect(names, ['p (1).jpg', 'p.jpg']);
+      expect(
+        archive.findFile('p.jpg')!.content,
+        utf8.encode('https://a.com/img/p.jpg'),
+      );
+      expect(outcome.bytes, await zip.length());
+
+      final leftovers = tempDir
+          .listSync()
+          .where((entry) => entry.path.contains('imgcat_zip_'));
+      expect(leftovers, isEmpty, reason: '打包工作目录必须清理');
+    });
+
+    test('单张失败只跳过并计数，其余仍然打包', () async {
+      final service = build(
+        blob: (asset, dest) async {
+          if (asset.url.contains('bad')) {
+            // 非 BlobFetchException 不降级，直接算这一张失败。
+            throw const FileSystemException('404');
+          }
+          await dest.parent.create(recursive: true);
+          await dest.writeAsBytes(const [1, 2, 3]);
+          return dest;
+        },
+      );
+
+      final outcome = await service.downloadArchive(
+        [
+          const ImageAsset(url: 'https://a.com/bad.jpg'),
+          const ImageAsset(url: 'https://a.com/ok.jpg'),
+        ],
+        archiveName: 'imgcat-y.zip',
+      );
+
+      expect(outcome.included, 1);
+      expect(outcome.failed, 1);
+      final archive = ZipDecoder().decodeBytes(
+        await File('${downloadsDir.path}/imgcat-y.zip').readAsBytes(),
+      );
+      expect(archive.files.map((file) => file.name), ['ok.jpg']);
+    });
+
+    test('全部失败：抛错且不生成 zip', () async {
+      final service = build(
+        blob: (asset, dest) => throw const FileSystemException('404'),
+      );
+
+      await expectLater(
+        service.downloadArchive(
+          [const ImageAsset(url: 'https://a.com/bad.jpg')],
+          archiveName: 'imgcat-z.zip',
+        ),
+        throwsA(isA<SaveException>()),
+      );
+      expect(await File('${downloadsDir.path}/imgcat-z.zip').exists(), isFalse);
+    });
+
+    test('空列表：直接抛「没有可打包的图片」', () async {
+      final service = build(
+        blob: (asset, dest) async => dest,
+      );
+
+      await expectLater(
+        service.downloadArchive(
+          [],
+          archiveName: 'imgcat-empty.zip',
+        ),
+        throwsA(
+          isA<SaveException>().having(
+            (e) => e.message,
+            'message',
+            '没有可打包的图片',
+          ),
+        ),
+      );
+    });
   });
 }

@@ -31,6 +31,9 @@ class CaptureController extends ChangeNotifier {
 
   FilterSettings get filter => _filter;
 
+  /// 筛选是否仍为默认值（决定筛选栏是否显示「重置」）。
+  bool get isFilterDefault => _filter.isDefault;
+
   ScanProgress? get scan => _scan;
 
   /// 上一次扫描是否撞到 40 屏 / 60 秒上限。
@@ -78,6 +81,13 @@ class CaptureController extends ChangeNotifier {
         // blob 分块由 DownloadController 处理，聚合器不关心。
         break;
     }
+  }
+
+  /// 恢复默认筛选（尺寸去重开、最小边 64px、全部格式与来源）。
+  void resetFilter() {
+    if (_filter.isDefault) return;
+    _filter = const FilterSettings();
+    notifyListeners();
   }
 
   void setMinSide(int value) {

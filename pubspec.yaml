@@ -40,6 +40,7 @@ dependencies:
   dio: ^5.11.1
   gal: ^2.3.3
   app_settings: ^9.0.0
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:

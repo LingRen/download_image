@@ -235,4 +235,40 @@ void main() {
 
     expect(find.textContaining('镜像 403'), findsOneWidget);
   });
+
+  testWidgets('桌面端面板提供打包入口，打包完成后弹提示', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final capture = CaptureController();
+    capture.accept(
+      CaptureBatch(
+        pageUrl: 'https://a.com/p',
+        assets: const [
+          ImageAsset(url: 'https://a.com/a.jpg', width: 300, height: 300),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeShell(
+          capture: capture,
+          download: fakeDownloadController(archiver: FakeArchiver()),
+          browserContentOverride: const SizedBox.expand(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('archive-menu')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('archive-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('打包全部可见 (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('已打包 1 张到'), findsOneWidget);
+  });
 }

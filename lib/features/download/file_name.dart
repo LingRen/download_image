@@ -33,3 +33,12 @@ String uniqueFileName(String fileName, int index) {
   if (dot <= 0) return '$fileName ($index)';
   return '${fileName.substring(0, dot)} ($index)${fileName.substring(dot)}';
 }
+
+/// 桌面端打包下载的压缩包名：`imgcat-20260923-153045.zip`。
+String buildArchiveName(DateTime now) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  final stamp =
+      '${now.year}${two(now.month)}${two(now.day)}'
+      '-${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  return 'imgcat-$stamp.zip';
+}

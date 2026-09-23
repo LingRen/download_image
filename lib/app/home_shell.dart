@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/bridge/js_channel.dart';
@@ -9,11 +11,16 @@ import '../features/browser/browser_page.dart';
 import '../features/capture/capture_controller.dart';
 import '../features/download/download_controller.dart';
 import '../features/download/download_service.dart';
+import '../features/download/file_name.dart';
 import '../features/download/save_target.dart';
 import '../features/download/webview_blob_fetcher.dart';
 import '../features/gallery/image_panel.dart';
 import '../features/gallery/image_preview_page.dart';
 import 'breakpoints.dart';
+
+/// 桌面端（Windows / macOS / Linux）才提供压缩包下载。
+bool get _isDesktop =>
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -54,15 +61,17 @@ class _HomeShellState extends State<HomeShell> {
     _capture = widget.capture ?? CaptureController();
     _browser = widget.browser ?? BrowserController();
     final blobFetcher = WebViewBlobFetcher(_jsChannel);
+    final service = DownloadService(
+      blobFetcher: blobFetcher,
+      saveTarget: createSaveTarget(),
+      refererProvider: () => _capture.pageUrl,
+    );
     _download =
         widget.download ??
         DownloadController(
-          executor: DownloadService(
-            blobFetcher: blobFetcher,
-            saveTarget: createSaveTarget(),
-            refererProvider: () => _capture.pageUrl,
-          ),
+          executor: service,
           blobSink: blobFetcher,
+          archiver: service,
         );
   }
 
@@ -121,6 +130,29 @@ class _HomeShellState extends State<HomeShell> {
     }
     final error = _download.errorOf(asset.url);
     if (error != null) _showSnack('下载失败：$error');
+  }
+
+  /// 「打包 ▾」入口：目标列表由面板传入，成功 / 失败结果在这里提示。
+  Future<void> _archiveAssets(List<ImageAsset> assets) async {
+    final outcome = await _download.downloadArchive(
+      assets,
+      archiveName: buildArchiveName(DateTime.now()),
+    );
+    if (!mounted) return;
+    if (_download.needsPermission) {
+      await _showPermissionGuide();
+      return;
+    }
+    final error = _download.archiveError;
+    if (error != null) {
+      _showSnack('打包下载失败：$error');
+      return;
+    }
+    if (outcome == null) return;
+    final skipped = outcome.failed > 0
+        ? '，${outcome.failed} 张下载失败已跳过'
+        : '';
+    _showSnack('已打包 ${outcome.included} 张到 ${outcome.location}$skipped');
   }
 
   Future<void> _showPermissionGuide() async {
@@ -219,6 +251,8 @@ class _HomeShellState extends State<HomeShell> {
     onDownloadFailed: (failed) => _showSnack(
       '${failed.length} 张下载失败：${_download.errorOf(failed.first.url)}',
     ),
+    onArchive: _archiveAssets,
+    allowArchive: _isDesktop && _download.canArchive,
     // 折叠按钮放在面板自己的头部：叠在浏览器右上角会与地址栏的「重新扫描整页」
     // 命中区重叠约 44×44dp，宽屏下那个按钮几乎点不到。移动端 BottomSheet 里为 null。
     onCollapse: showCollapse

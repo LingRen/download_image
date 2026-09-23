@@ -61,4 +61,20 @@ void main() {
       expect(uniqueFileName('image', 2), 'image (2)');
     });
   });
+
+  group('buildArchiveName', () {
+    test('按 yyyyMMdd-HHmmss 打时间戳', () {
+      expect(
+        buildArchiveName(DateTime(2026, 9, 23, 15, 30, 5)),
+        'imgcat-20260923-153005.zip',
+      );
+    });
+
+    test('个位数补零', () {
+      expect(
+        buildArchiveName(DateTime(2026, 1, 2, 3, 4, 5)),
+        'imgcat-20260102-030405.zip',
+      );
+    });
+  });
 }
