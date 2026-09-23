@@ -23,10 +23,13 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
-# 从 pubspec.yaml 的 `version:` 行解析出版本号，去掉 build 号（1.0.0+1 -> 1.0.0）。
-VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][^+[:space:]]*\).*/\1/p' pubspec.yaml | head -n 1)"
-if [ -z "$VERSION" ]; then
-  echo "无法从 pubspec.yaml 解析版本号" >&2
+# 版本号优先取环境变量 VERSION（CI 按 tag 注入），否则从 pubspec.yaml 的
+# `version:` 行解析，并去掉 build 号（1.0.0+1 -> 1.0.0）。
+if [ -z "${VERSION:-}" ]; then
+  VERSION="$(sed -n 's/^version:[[:space:]]*\([0-9][^+[:space:]]*\).*/\1/p' pubspec.yaml | head -n 1)"
+fi
+if [ -z "${VERSION:-}" ]; then
+  echo "无法确定版本号：未设置 VERSION，也无法从 pubspec.yaml 解析" >&2
   exit 1
 fi
 

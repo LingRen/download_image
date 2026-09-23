@@ -45,16 +45,25 @@ jobs:
             echo "storeFile=release.jks"
           } > android/key.properties
 
+      # 版本以 tag 为准（v1.0.1 -> 1.0.1）；workflow_dispatch 没有 tag 时回退 pubspec。
+      - name: 解析版本号
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "版本号：${version}"
+
       - run: flutter pub get
-      - run: flutter build apk --release
+      - run: flutter build apk --release --build-name="$VERSION"
 
       # Flutter 默认产物名是 app-release.apk，改成与 macOS / Windows 一致的命名。
       - name: 重命名 APK
         run: |
-          version=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
-          echo "版本号：$version"
           mv build/app/outputs/flutter-apk/app-release.apk \
-             "build/app/outputs/flutter-apk/download_image-${version}-android.apk"
+             "build/app/outputs/flutter-apk/download_image-${VERSION}-android.apk"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -73,8 +82,19 @@ jobs:
           channel: stable
           cache: true
 
+      - name: 解析版本号
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "版本号：${version}"
+
       - run: flutter pub get
-      - run: flutter build macos --release
+      - run: flutter build macos --release --build-name="$VERSION"
+      # package_macos.sh 会读取环境变量 VERSION 决定 dmg 文件名。
       - run: bash scripts/package_macos.sh
 
       - uses: actions/upload-artifact@v7
@@ -94,8 +114,19 @@ jobs:
           channel: stable
           cache: true
 
+      - name: 解析版本号
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -n 's/^version: *\([0-9][^+ ]*\).*/\1/p' pubspec.yaml)
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "版本号：${version}"
+
       - run: flutter pub get
-      - run: flutter build windows --release
+      - run: flutter build windows --release --build-name="$VERSION"
 
       - name: 安装 Inno Setup
         run: choco install innosetup -y --no-progress
@@ -103,9 +134,8 @@ jobs:
       - name: 编译安装器
         shell: pwsh
         run: |
-          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9][^+\s]*)').Matches[0].Groups[1].Value
-          Write-Host "版本号：$version"
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "windows\installer\download_image.iss"
+          Write-Host "版本号：$env:VERSION"
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$env:VERSION" "windows\installer\download_image.iss"
 
       - uses: actions/upload-artifact@v7
         with:

@@ -89,9 +89,16 @@ storeFile=/绝对路径/download_image-release.jks
 - `.github/workflows/release.yml`：推 `v*` tag 或手动触发，三个平台并行构建，产物汇总后发布到 GitHub Release
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
+
+发布版本号**以 tag 为准**（`v1.0.1` → `1.0.1`），通过 `--build-name` 注入三端产物，
+macOS 的 dmg 文件名与 Windows 的安装器版本也取自它。`workflow_dispatch` 手动触发时
+没有 tag，回退读 `pubspec.yaml` 的 `version:`。
+
+Android 的 `versionCode` 仍来自 pubspec 的 build 号（`version: 1.0.0+1` 里的 `1`），
+发版时若需要递增，改这一位即可。
 
 需要在仓库 Settings → Secrets and variables → Actions 配置：
 
